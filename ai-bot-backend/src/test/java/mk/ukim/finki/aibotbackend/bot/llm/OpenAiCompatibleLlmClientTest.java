@@ -40,4 +40,32 @@ public class OpenAiCompatibleLlmClientTest {
             "{\"action\": {\"type\": \"FLY\"}, \"goalReached\": false}"))
             .isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    void retryDelayPrefersRetryAfterHeaderOverBody() {
+        long delayMillis = OpenAiCompatibleLlmClient.retryDelayMillis(
+            "5", "Please try again in 24.07s");
+        assertThat(delayMillis).isEqualTo(6_000L);
+    }
+
+    @Test
+    void retryDelayParsesTryAgainInFromBody() {
+        long delayMillis = OpenAiCompatibleLlmClient.retryDelayMillis(
+            null, "rate_limit_exceeded: Please try again in 24.07s.");
+        assertThat(delayMillis).isEqualTo(25_070L);
+    }
+
+    @Test
+    void retryDelayDefaultsTo30sOnGarbageOrNulls() {
+        assertThat(OpenAiCompatibleLlmClient.retryDelayMillis(null, null)).isEqualTo(30_000L);
+        assertThat(OpenAiCompatibleLlmClient.retryDelayMillis("not-a-number", "no useful info here"))
+            .isEqualTo(30_000L);
+    }
+
+    @Test
+    void retryDelayIsCappedAt60s() {
+        assertThat(OpenAiCompatibleLlmClient.retryDelayMillis("120", null)).isEqualTo(60_000L);
+        assertThat(OpenAiCompatibleLlmClient.retryDelayMillis(null, "try again in 90s"))
+            .isEqualTo(60_000L);
+    }
 }

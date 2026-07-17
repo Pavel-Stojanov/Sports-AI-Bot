@@ -5,15 +5,19 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import mk.ukim.finki.aibotbackend.bot.browser.PageSnapshot;
 import mk.ukim.finki.aibotbackend.model.enums.BotActionType;
 import mk.ukim.finki.aibotbackend.model.exception.BotExecutionException;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 /**
  * LlmClient against any OpenAI-compatible chat-completions API. The provider
@@ -24,6 +28,12 @@ import org.springframework.web.client.RestClientException;
 @Slf4j
 public class OpenAiCompatibleLlmClient implements LlmClient {
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final int MAX_RATE_LIMIT_RETRIES = 3;
+    private static final long DEFAULT_RETRY_DELAY_MILLIS = 30_000L;
+    private static final long MAX_RETRY_DELAY_MILLIS = 60_000L;
+    private static final long RETRY_DELAY_MARGIN_MILLIS = 1_000L;
+    private static final Pattern TRY_AGAIN_PATTERN =
+        Pattern.compile("try again in ([0-9.]+)s", Pattern.CASE_INSENSITIVE);
 
     private static final String DECISION_SYSTEM_PROMPT = """
         You control a browser agent extracting Macedonian sports content from the
@@ -71,17 +81,73 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
                 Map.of("role", "user", "content", userPrompt)
             )
         );
-        try {
-            JsonNode response = restClient.post()
-                .uri("/chat/completions")
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(body)
-                .retrieve()
-                .body(JsonNode.class);
-            return response.path("choices").path(0).path("message").path("content").asText();
-        } catch (RestClientException exception) {
-            throw new BotExecutionException("LLM call failed: " + exception.getMessage(), exception);
+        int retries = 0;
+        while (true) {
+            try {
+                JsonNode response = restClient.post()
+                    .uri("/chat/completions")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .body(JsonNode.class);
+                return response.path("choices").path(0).path("message").path("content").asText();
+            } catch (RestClientResponseException exception) {
+                if (exception.getStatusCode().value() != HttpStatus.TOO_MANY_REQUESTS.value()
+                    || retries >= MAX_RATE_LIMIT_RETRIES) {
+                    throw new BotExecutionException("LLM call failed: " + exception.getMessage(), exception);
+                }
+                retries++;
+                long delayMillis = retryDelayMillis(
+                    exception.getResponseHeaders() != null
+                        ? exception.getResponseHeaders().getFirst(HttpHeaders.RETRY_AFTER) : null,
+                    exception.getResponseBodyAsString());
+                log.warn("LLM rate limited (429); waiting {}ms before retry {}/{}",
+                    delayMillis, retries, MAX_RATE_LIMIT_RETRIES);
+                try {
+                    Thread.sleep(delayMillis);
+                } catch (InterruptedException interruptedException) {
+                    Thread.currentThread().interrupt();
+                    throw new BotExecutionException(
+                        "LLM call interrupted while waiting to retry after rate limit", interruptedException);
+                }
+            } catch (RestClientException exception) {
+                throw new BotExecutionException("LLM call failed: " + exception.getMessage(), exception);
+            }
         }
+    }
+
+    static long retryDelayMillis(String retryAfterHeader, String responseBody) {
+        Long headerSeconds = parseSeconds(retryAfterHeader);
+        if (headerSeconds != null) {
+            return capRetryDelayMillis(headerSeconds * 1000 + RETRY_DELAY_MARGIN_MILLIS);
+        }
+        if (responseBody != null) {
+            Matcher matcher = TRY_AGAIN_PATTERN.matcher(responseBody);
+            if (matcher.find()) {
+                try {
+                    double seconds = Double.parseDouble(matcher.group(1));
+                    return capRetryDelayMillis((long) (seconds * 1000) + RETRY_DELAY_MARGIN_MILLIS);
+                } catch (NumberFormatException ignored) {
+                    // fall through to default
+                }
+            }
+        }
+        return DEFAULT_RETRY_DELAY_MILLIS;
+    }
+
+    private static Long parseSeconds(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(value.strip());
+        } catch (NumberFormatException exception) {
+            return null;
+        }
+    }
+
+    private static long capRetryDelayMillis(long millis) {
+        return Math.min(millis, MAX_RETRY_DELAY_MILLIS);
     }
 
     @Override
