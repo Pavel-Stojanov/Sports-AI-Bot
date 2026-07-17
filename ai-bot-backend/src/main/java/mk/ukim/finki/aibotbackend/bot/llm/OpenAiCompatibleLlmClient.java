@@ -48,6 +48,8 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
         FINISH (stop working on this goal).
 
         Rules:
+        - If the goal names a starting URL and it does not appear in the history yet,
+          your first action is NAVIGATE to it.
         - Prefer NAVIGATE using the absolute URLs shown in [brackets] in the page text.
         - Never NAVIGATE to a URL that already appears in the history.
         - Listing and scoreboard pages (fixture tables, section fronts like /rezultati) are
@@ -56,7 +58,10 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
         - EXTRACT only when the current page shows ONE full article or match report.
         - Do not EXTRACT the same URL twice; check the EXTRACT target URLs in the history.
         - The site is public: never use LOGIN.
-        - After 3 successful EXTRACTs (within the usual 3-5 articles), or when nothing relevant is left, use FINISH.
+        - After 3 successful EXTRACTs (within the usual 3-5 articles), use FINISH.
+        - Never FINISH before your first EXTRACT — a listing page with article links in
+          [brackets] always leaves you a NAVIGATE move. FINISH early only if the history
+          shows the same action failing repeatedly.
 
         Respond with ONLY this JSON object, no other text:
         {"action": {"type": "...", "target": "... or null", "value": "... or null",
