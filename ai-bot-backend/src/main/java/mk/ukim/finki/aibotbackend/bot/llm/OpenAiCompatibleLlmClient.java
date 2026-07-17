@@ -62,6 +62,9 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
         - Never FINISH before your first EXTRACT — a listing page with article links in
           [brackets] always leaves you a NAVIGATE move. FINISH early only if the history
           shows the same action failing repeatedly.
+        - goalReached refers ONLY to the current goal: it is true only once the history
+          shows the EXTRACTs this goal asked for. When the history is empty, goalReached
+          is always false — whatever the page shows, the goal's work has not started yet.
 
         Respond with ONLY this JSON object, no other text:
         {"action": {"type": "...", "target": "... or null", "value": "... or null",
@@ -164,14 +167,14 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
         String userPrompt = buildDecisionPrompt(snapshot, goal, history);
         String raw = complete(DECISION_SYSTEM_PROMPT, userPrompt);
         try {
-            return parseDecision(raw);
+            return guardFirstDecision(parseDecision(raw), history);
         } catch (JsonProcessingException | IllegalArgumentException firstError) {
             log.warn("Malformed LLM decision, retrying once: {}", firstError.getMessage());
             String retryRaw = complete(DECISION_SYSTEM_PROMPT,
                 userPrompt + "\n\nYour previous reply was not the required JSON ("
                     + firstError.getMessage() + "). Reply with ONLY the JSON object.");
             try {
-                return parseDecision(retryRaw);
+                return guardFirstDecision(parseDecision(retryRaw), history);
             } catch (JsonProcessingException | IllegalArgumentException secondError) {
                 log.error("LLM decision unparseable twice, finishing target: {}", secondError.getMessage());
                 return new BotDecision(
@@ -181,6 +184,21 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
                     "Safe FINISH fallback after two malformed LLM responses.");
             }
         }
+    }
+
+    /**
+     * The agentic loop stops a target as soon as {@code goalReached} is true —
+     * before performing or logging the decision's action. A spurious
+     * {@code goalReached: true} on the FIRST decision of a target therefore
+     * skips the whole target silently (observed in live runs), so it is
+     * deterministically overridden here.
+     */
+    static BotDecision guardFirstDecision(BotDecision decision, List<BotAction> history) {
+        if (decision.goalReached() && (history == null || history.isEmpty())) {
+            log.warn("LLM claimed goalReached on the first decision of a target — overriding to false.");
+            return new BotDecision(decision.action(), false, decision.rationale());
+        }
+        return decision;
     }
 
     static BotDecision parseDecision(String raw) throws JsonProcessingException {

@@ -1,6 +1,7 @@
 package mk.ukim.finki.aibotbackend.bot.llm;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import java.util.List;
 import mk.ukim.finki.aibotbackend.model.enums.BotActionType;
 import org.junit.jupiter.api.Test;
 
@@ -19,6 +20,28 @@ public class OpenAiCompatibleLlmClientTest {
         assertThat(decision.goalReached()).isFalse();
         assertThat(decision.action().type()).isEqualTo(BotActionType.NAVIGATE);
         assertThat(decision.action().target()).isEqualTo("https://www.gol.mk/rezultati");
+    }
+
+    @Test
+    void firstDecisionOfATargetCannotClaimGoalReached() {
+        BotDecision premature = new BotDecision(
+            new BotAction(BotActionType.FINISH, null, null, "done"), true, "already satisfied");
+
+        BotDecision guarded = OpenAiCompatibleLlmClient.guardFirstDecision(premature, List.of());
+
+        assertThat(guarded.goalReached()).isFalse();
+        assertThat(guarded.action().type()).isEqualTo(BotActionType.FINISH);
+    }
+
+    @Test
+    void goalReachedSurvivesWhenHistoryExists() {
+        BotDecision legitimate = new BotDecision(
+            new BotAction(BotActionType.FINISH, null, null, "done"), true, "3 extracts done");
+        List<BotAction> history = List.of(
+            new BotAction(BotActionType.EXTRACT, "https://www.gol.mk/x", null, ""));
+
+        assertThat(OpenAiCompatibleLlmClient.guardFirstDecision(legitimate, history).goalReached())
+            .isTrue();
     }
 
     @Test
