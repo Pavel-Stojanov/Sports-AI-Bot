@@ -10,6 +10,7 @@ import mk.ukim.finki.aibotbackend.service.domain.BotActionLogService;
 import mk.ukim.finki.aibotbackend.service.domain.ExtractedPostService;
 import mk.ukim.finki.aibotbackend.service.domain.ExtractionSessionService;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Slf4j
 @Service
@@ -18,24 +19,35 @@ public class BotOrchestratorImpl implements BotOrchestrator {
     private final ExtractionSessionService extractionSessionService;
     private final ExtractedPostService extractedPostService;
     private final BotActionLogService botActionLogService;
+    private final TransactionTemplate transactionTemplate;
 
     public BotOrchestratorImpl(
         SocialNetworkBot socialNetworkBot,
         ExtractionSessionService extractionSessionService,
         ExtractedPostService extractedPostService,
-        BotActionLogService botActionLogService
+        BotActionLogService botActionLogService,
+        TransactionTemplate transactionTemplate
     ) {
         this.socialNetworkBot = socialNetworkBot;
         this.extractionSessionService = extractionSessionService;
         this.extractedPostService = extractedPostService;
         this.botActionLogService = botActionLogService;
+        this.transactionTemplate = transactionTemplate;
     }
 
     @Override
     public void runSession(Long sessionId) {
-        ExtractionSession session = extractionSessionService
-            .findById(sessionId)
-            .orElseThrow(() -> new SessionNotFoundException(sessionId));
+        // Runs on the async bot thread: load the session and materialize its
+        // LAZY targets inside a short transaction so the rest of the (long)
+        // run can work on a detached entity without a LazyInitializationException
+        // and without holding a DB connection for the whole run.
+        ExtractionSession session = transactionTemplate.execute(status -> {
+            ExtractionSession loaded = extractionSessionService
+                .findById(sessionId)
+                .orElseThrow(() -> new SessionNotFoundException(sessionId));
+            loaded.getTargets().size();
+            return loaded;
+        });
 
         try {
             socialNetworkBot.login();
