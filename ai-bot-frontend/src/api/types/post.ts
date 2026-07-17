@@ -16,6 +16,7 @@ export interface PostResponse {
   externalId: string | null;
   authorHandle: string | null;
   content: string | null;
+  summary: string | null;
   sourceUrl: string | null;
   postedAt: string | null;
   macedonianConfidence: number | null;

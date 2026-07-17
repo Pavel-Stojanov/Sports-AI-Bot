@@ -13,6 +13,7 @@ public record CreateExtractedPostDto(
     String externalId,
     String authorHandle,
     String content,
+    String summary,
     String sourceUrl,
     LocalDateTime postedAt,
     Double macedonianConfidence,
@@ -23,6 +24,7 @@ public record CreateExtractedPostDto(
             externalId,
             authorHandle,
             content,
+            summary,
             sourceUrl,
             postedAt,
             confidence,
@@ -40,6 +42,7 @@ public record CreateExtractedPostDto(
             postedAt,
             macedonianConfidence
         );
+        post.setSummary(summary);
         if (mediaItems != null) {
             mediaItems
                 .stream()
