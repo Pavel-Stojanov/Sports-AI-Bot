@@ -69,4 +69,21 @@ public class GolMkContentExtractorTest {
         assertThat(new GolMkContentExtractor(fakeLlm)
             .extract(new PageSnapshot("u", "t", "  ", null))).isEmpty();
     }
+
+    @Test
+    void llmTransportErrorYieldsNoPosts() {
+        LlmClient failingLlm = new LlmClient() {
+            @Override
+            public String complete(String systemPrompt, String userPrompt) {
+                throw new RuntimeException("Network timeout");
+            }
+
+            @Override
+            public BotDecision decideNextAction(PageSnapshot s, String g, List<BotAction> h) {
+                throw new UnsupportedOperationException();
+            }
+        };
+        assertThat(new GolMkContentExtractor(failingLlm)
+            .extract(new PageSnapshot("u", "t", "text", null))).isEmpty();
+    }
 }

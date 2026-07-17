@@ -50,13 +50,16 @@ public class GolMkContentExtractor implements ContentExtractor {
         if (snapshot.domContent() == null || snapshot.domContent().isBlank()) {
             return List.of();
         }
-        String raw = llmClient.complete(EXTRACTION_SYSTEM_PROMPT,
-            "Page URL: %s%nPage title: %s%n%n%s"
-                .formatted(snapshot.url(), snapshot.title(), snapshot.domContent()));
         try {
+            String raw = llmClient.complete(EXTRACTION_SYSTEM_PROMPT,
+                "Page URL: %s%nPage title: %s%n%n%s"
+                    .formatted(snapshot.url(), snapshot.title(), snapshot.domContent()));
             return parseItems(raw, snapshot.url());
         } catch (JsonProcessingException | IllegalArgumentException exception) {
             log.warn("Could not parse extraction result for {}: {}", snapshot.url(), exception.getMessage());
+            return List.of();
+        } catch (RuntimeException exception) {
+            log.warn("LLM client error while extracting from {}: {}", snapshot.url(), exception.getMessage());
             return List.of();
         }
     }
