@@ -21,7 +21,11 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class PlaywrightBrowserAgent implements BrowserAgent {
-    private static final int MAX_DOM_CHARS = 15_000;
+    // Kept small because free-tier LLM providers (e.g. Groq) enforce tight
+    // tokens-per-minute/tokens-per-day budgets, and every decision/extraction
+    // call ships one snapshot; 15k chars (~7k tokens) burned a full day's
+    // quota in a single session.
+    private static final int MAX_DOM_CHARS = 8_000;
 
     private final BotProperties botProperties;
 
