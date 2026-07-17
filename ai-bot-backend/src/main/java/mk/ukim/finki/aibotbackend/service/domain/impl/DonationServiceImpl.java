@@ -1,15 +1,28 @@
 package mk.ukim.finki.aibotbackend.service.domain.impl;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
+import mk.ukim.finki.aibotbackend.integration.vezilka.TextDonationRequest;
 import mk.ukim.finki.aibotbackend.integration.vezilka.VezilkaClient;
+import mk.ukim.finki.aibotbackend.integration.vezilka.DonationReceipt;
 import mk.ukim.finki.aibotbackend.model.domain.DonationBatch;
+import mk.ukim.finki.aibotbackend.model.domain.ExtractedPost;
+import mk.ukim.finki.aibotbackend.model.enums.DonationStatus;
+import mk.ukim.finki.aibotbackend.model.exception.DonationBatchNotFoundException;
+import mk.ukim.finki.aibotbackend.model.exception.InvalidDonationStateException;
+import mk.ukim.finki.aibotbackend.model.exception.PostNotFoundException;
+import mk.ukim.finki.aibotbackend.model.exception.VezilkaIntegrationException;
 import mk.ukim.finki.aibotbackend.repository.DonationBatchRepository;
 import mk.ukim.finki.aibotbackend.service.domain.DonationService;
 import mk.ukim.finki.aibotbackend.service.domain.ExtractedPostService;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@Slf4j
 public class DonationServiceImpl implements DonationService {
     private final DonationBatchRepository donationBatchRepository;
     private final ExtractedPostService extractedPostService;
@@ -27,39 +40,91 @@ public class DonationServiceImpl implements DonationService {
 
     @Override
     public List<DonationBatch> findAll() {
-        throw new UnsupportedOperationException("TODO(student): Implement DonationService.findAll().");
+        return donationBatchRepository.findAll();
     }
 
     @Override
     public Optional<DonationBatch> findById(Long id) {
-        throw new UnsupportedOperationException("TODO(student): Implement DonationService.findById().");
+        return donationBatchRepository.findById(id);
     }
 
     @Override
+    @Transactional
     public DonationBatch createBatch(List<Long> postIds) {
-        // TODO(student): Load the posts (extractedPostService.findAllById), create a
-        //  DRAFT batch, attach the posts to it and save everything.
-        throw new UnsupportedOperationException("TODO(student): Implement DonationService.createBatch().");
+        List<ExtractedPost> posts = extractedPostService.findAllById(postIds);
+        for (Long postId : postIds) {
+            if (posts.stream().noneMatch(post -> post.getId().equals(postId))) {
+                throw new PostNotFoundException(postId);
+            }
+        }
+        DonationBatch batch = donationBatchRepository.save(new DonationBatch(DonationStatus.DRAFT));
+        posts.forEach(post -> post.setDonationBatch(batch));
+        extractedPostService.saveAll(posts);
+        batch.getPosts().addAll(posts);
+        return batch;
     }
 
     @Override
     public DonationBatch approve(Long id) {
-        throw new UnsupportedOperationException("TODO(student): Implement DonationService.approve().");
+        DonationBatch batch = getOrThrow(id);
+        if (batch.getStatus() != DonationStatus.DRAFT) {
+            throw new InvalidDonationStateException(id, batch.getStatus());
+        }
+        batch.setStatus(DonationStatus.APPROVED);
+        return donationBatchRepository.save(batch);
     }
 
     @Override
     public DonationBatch submit(Long id) {
-        // TODO(student): Build a TextDonationRequest from the batch content, call
-        //  vezilkaClient.submitTextDonation, store the receipt reference, stamp
-        //  submittedAt, set the status to SUBMITTED and save. Consider publishing
-        //  a DonationBatchSubmittedEvent afterwards.
-        throw new UnsupportedOperationException("TODO(student): Implement DonationService.submit().");
+        DonationBatch batch = getOrThrow(id);
+        if (batch.getStatus() != DonationStatus.APPROVED) {
+            throw new InvalidDonationStateException(id, batch.getStatus());
+        }
+        TextDonationRequest request = new TextDonationRequest(
+            "Македонски спортски содржини од gol.mk — пакет %d".formatted(batch.getId()),
+            buildContent(batch),
+            "https://www.gol.mk/"
+        );
+        DonationReceipt receipt = vezilkaClient.submitTextDonation(request);
+        batch.setVezilkaReference(receipt.reference());
+        batch.setSubmittedAt(LocalDateTime.now());
+        batch.setStatus(DonationStatus.SUBMITTED);
+        return donationBatchRepository.save(batch);
     }
 
     @Override
     public void refreshSubmittedStatuses() {
-        // TODO(student): For every batch in status SUBMITTED, call
-        //  vezilkaClient.checkStatus(batch.getVezilkaReference()) and update the status.
-        throw new UnsupportedOperationException("TODO(student): Implement DonationService.refreshSubmittedStatuses().");
+        for (DonationBatch batch : donationBatchRepository.findAllByStatus(DonationStatus.SUBMITTED)) {
+            try {
+                DonationStatus status = vezilkaClient.checkStatus(batch.getVezilkaReference());
+                if (status == DonationStatus.ACCEPTED
+                    || status == DonationStatus.REJECTED
+                    || status == DonationStatus.FAILED) {
+                    batch.setStatus(status);
+                    donationBatchRepository.save(batch);
+                }
+            } catch (VezilkaIntegrationException exception) {
+                log.warn("Could not refresh status of donation batch {}: {}",
+                    batch.getId(), exception.getMessage());
+            }
+        }
+    }
+
+    private String buildContent(DonationBatch batch) {
+        return batch.getPosts()
+            .stream()
+            .map(post -> {
+                String text = post.getSummary() != null && !post.getSummary().isBlank()
+                    ? post.getSummary()
+                    : post.getContent();
+                return text + "\n\nИзвор: " + post.getSourceUrl();
+            })
+            .collect(Collectors.joining("\n\n---\n\n"));
+    }
+
+    private DonationBatch getOrThrow(Long id) {
+        return donationBatchRepository
+            .findById(id)
+            .orElseThrow(() -> new DonationBatchNotFoundException(id));
     }
 }
