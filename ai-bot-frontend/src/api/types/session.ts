@@ -6,7 +6,8 @@ export type SocialNetwork =
   | 'TIKTOK'
   | 'YOUTUBE'
   | 'THREADS'
-  | 'LINKEDIN';
+  | 'LINKEDIN'
+  | 'SPORTS_PORTAL_GOL';
 
 export type SessionStatus = 'CREATED' | 'RUNNING' | 'PAUSED' | 'COMPLETED' | 'FAILED';
 
