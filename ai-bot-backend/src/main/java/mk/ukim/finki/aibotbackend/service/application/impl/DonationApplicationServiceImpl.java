@@ -18,31 +18,26 @@ public class DonationApplicationServiceImpl implements DonationApplicationServic
 
     @Override
     public List<DisplayDonationBatchDto> findAll() {
-        throw new UnsupportedOperationException(
-            "TODO(student): Implement DonationApplicationService.findAll().");
+        return DisplayDonationBatchDto.from(donationService.findAll());
     }
 
     @Override
     public Optional<DisplayDonationBatchDto> findById(Long id) {
-        throw new UnsupportedOperationException(
-            "TODO(student): Implement DonationApplicationService.findById().");
+        return donationService.findById(id).map(DisplayDonationBatchDto::from);
     }
 
     @Override
     public DisplayDonationBatchDto create(CreateDonationBatchDto createDonationBatchDto) {
-        throw new UnsupportedOperationException(
-            "TODO(student): Implement DonationApplicationService.create().");
+        return DisplayDonationBatchDto.from(donationService.createBatch(createDonationBatchDto.postIds()));
     }
 
     @Override
     public DisplayDonationBatchDto approve(Long id) {
-        throw new UnsupportedOperationException(
-            "TODO(student): Implement DonationApplicationService.approve().");
+        return DisplayDonationBatchDto.from(donationService.approve(id));
     }
 
     @Override
     public DisplayDonationBatchDto submit(Long id) {
-        throw new UnsupportedOperationException(
-            "TODO(student): Implement DonationApplicationService.submit().");
+        return DisplayDonationBatchDto.from(donationService.submit(id));
     }
 }
