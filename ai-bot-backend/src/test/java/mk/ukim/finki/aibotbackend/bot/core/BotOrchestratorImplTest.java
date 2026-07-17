@@ -93,6 +93,22 @@ public class BotOrchestratorImplTest {
     }
 
     @Test
+    void runSessionDeduplicatesRepeatedExtractsByExternalId() {
+        Long sessionId = createRunningSessionWithTarget();
+        CreateExtractedPostDto post = new CreateExtractedPostDto(
+            "gol-dup", "gol.mk", "Пелистер победи со 2:0.", "Пелистер победи.",
+            "https://www.gol.mk/fudbal/pelister", null, 0.9, List.of());
+        when(socialNetworkBot.execute(any(), any())).thenReturn(List.of(post, post, post));
+
+        botOrchestrator.runSession(sessionId);
+
+        List<ExtractedPost> persisted = extractedPostService
+            .findAll(new PostFilterDto(sessionId, null, null, null, null), 0, 10)
+            .getContent();
+        assertThat(persisted).hasSize(1);
+    }
+
+    @Test
     void runSessionFailsButStillShutsDownWhenBotThrows() {
         Long sessionId = createRunningSessionWithTarget();
         when(socialNetworkBot.execute(any(), any()))

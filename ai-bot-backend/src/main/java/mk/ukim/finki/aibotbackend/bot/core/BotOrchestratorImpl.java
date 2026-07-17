@@ -1,6 +1,8 @@
 package mk.ukim.finki.aibotbackend.bot.core;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 import mk.ukim.finki.aibotbackend.model.domain.ExtractionSession;
 import mk.ukim.finki.aibotbackend.model.domain.ExtractionTarget;
@@ -51,12 +53,16 @@ public class BotOrchestratorImpl implements BotOrchestrator {
 
         try {
             socialNetworkBot.login();
+            // The LLM sometimes EXTRACTs the same page more than once despite the
+            // prompt rules, so posts are deduplicated by externalId across the run.
+            Set<String> seenExternalIds = new HashSet<>();
             for (ExtractionTarget target : session.getTargets()) {
                 List<CreateExtractedPostDto> extracted = socialNetworkBot.execute(
                     target,
                     (action, successful) -> botActionLogService.log(session, action, successful));
                 extractedPostService.saveAll(
                     extracted.stream()
+                        .filter(dto -> dto.externalId() == null || seenExternalIds.add(dto.externalId()))
                         .map(dto -> dto.toExtractedPost(session))
                         .toList());
             }
