@@ -1,12 +1,17 @@
 package mk.ukim.finki.aibotbackend.bot.core;
 
+import java.util.List;
+import lombok.extern.slf4j.Slf4j;
 import mk.ukim.finki.aibotbackend.model.domain.ExtractionSession;
+import mk.ukim.finki.aibotbackend.model.domain.ExtractionTarget;
+import mk.ukim.finki.aibotbackend.model.dto.CreateExtractedPostDto;
 import mk.ukim.finki.aibotbackend.model.exception.SessionNotFoundException;
 import mk.ukim.finki.aibotbackend.service.domain.BotActionLogService;
 import mk.ukim.finki.aibotbackend.service.domain.ExtractedPostService;
 import mk.ukim.finki.aibotbackend.service.domain.ExtractionSessionService;
 import org.springframework.stereotype.Service;
 
+@Slf4j
 @Service
 public class BotOrchestratorImpl implements BotOrchestrator {
     private final SocialNetworkBot socialNetworkBot;
@@ -32,16 +37,23 @@ public class BotOrchestratorImpl implements BotOrchestrator {
             .findById(sessionId)
             .orElseThrow(() -> new SessionNotFoundException(sessionId));
 
-        // TODO(student): Orchestrate the full run:
-        //  1. socialNetworkBot.login()
-        //  2. for each target of the session:
-        //       socialNetworkBot.execute(target,
-        //           (action, successful) -> botActionLogService.log(session, action, successful))
-        //     then map the returned DTOs with CreateExtractedPostDto.toExtractedPost(session)
-        //     and persist them with extractedPostService.saveAll(...)
-        //  3. mark the session COMPLETED via extractionSessionService.complete(sessionId),
-        //     or FAILED via extractionSessionService.fail(sessionId) when something goes wrong
-        //  4. always socialNetworkBot.shutdown() at the end
-        throw new UnsupportedOperationException("TODO(student): Implement BotOrchestrator.runSession().");
+        try {
+            socialNetworkBot.login();
+            for (ExtractionTarget target : session.getTargets()) {
+                List<CreateExtractedPostDto> extracted = socialNetworkBot.execute(
+                    target,
+                    (action, successful) -> botActionLogService.log(session, action, successful));
+                extractedPostService.saveAll(
+                    extracted.stream()
+                        .map(dto -> dto.toExtractedPost(session))
+                        .toList());
+            }
+            extractionSessionService.complete(sessionId);
+        } catch (RuntimeException exception) {
+            log.error("Extraction session {} failed.", sessionId, exception);
+            extractionSessionService.fail(sessionId);
+        } finally {
+            socialNetworkBot.shutdown();
+        }
     }
 }
