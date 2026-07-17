@@ -1,24 +1,56 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { CreateDonationBatchRequest, DonationBatchResponse } from '../api/types/donation.ts';
+import donationApi from '../api/donationApi.ts';
+import useSnackbar from './useSnackbar.ts';
 
-/**
- * TODO(student): Drive the donation workflow for the DonationsPage: list the
- * batches (donationApi.findAll) and expose create/approve/submit actions,
- * re-fetching after every mutation, with loading/error state.
- */
 const useDonations = () => {
-  const [donations] = useState<DonationBatchResponse[]>([]);
-  const [loading] = useState<boolean>(false);
+  const { showSnackbar } = useSnackbar();
 
-  const onCreate = async (data: CreateDonationBatchRequest) => {
-    void data;
-  };
-  const onApprove = async (id: number) => {
-    void id;
-  };
-  const onSubmit = async (id: number) => {
-    void id;
-  };
+  const [donations, setDonations] = useState<DonationBatchResponse[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+
+  const fetch = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await donationApi.findAll();
+      setDonations(response.data);
+    } catch (err) {
+      showSnackbar(err instanceof Error ? err.message : 'Failed to load donations.', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [showSnackbar]);
+
+  useEffect(() => {
+    void fetch();
+  }, [fetch]);
+
+  const onCreate = useCallback(async (data: CreateDonationBatchRequest) => {
+    try {
+      await donationApi.add(data);
+      await fetch();
+    } catch (err) {
+      showSnackbar(err instanceof Error ? err.message : 'Failed to create donation batch.', 'error');
+    }
+  }, [fetch, showSnackbar]);
+
+  const onApprove = useCallback(async (id: number) => {
+    try {
+      await donationApi.approve(id.toString());
+      await fetch();
+    } catch (err) {
+      showSnackbar(err instanceof Error ? err.message : 'Failed to approve batch.', 'error');
+    }
+  }, [fetch, showSnackbar]);
+
+  const onSubmit = useCallback(async (id: number) => {
+    try {
+      await donationApi.submit(id.toString());
+      await fetch();
+    } catch (err) {
+      showSnackbar(err instanceof Error ? err.message : 'Failed to submit batch to Vezilka.', 'error');
+    }
+  }, [fetch, showSnackbar]);
 
   return { donations, loading, onCreate, onApprove, onSubmit };
 };
