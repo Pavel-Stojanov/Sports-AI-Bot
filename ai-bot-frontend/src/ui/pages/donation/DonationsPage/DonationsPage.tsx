@@ -6,9 +6,9 @@ import DonationBatchCard from '../../../components/donation/DonationBatchCard/Do
 import SubmitDonationDialog from '../../../components/donation/SubmitDonationDialog/SubmitDonationDialog.tsx';
 
 /**
- * The donation dashboard towards doniraj.vezilka.ai.
- * TODO(student): Implement useDonations, DonationBatchCard and
- * SubmitDonationDialog, plus overall donation statistics.
+ * The donation dashboard towards doniraj.vezilka.ai: batches are created from
+ * undonated posts (SubmitDonationDialog), then approved and submitted from
+ * their DonationBatchCard via useDonations.
  */
 const DonationsPage = () => {
   const { donations, loading, onCreate, onApprove, onSubmit } = useDonations();

@@ -6,8 +6,9 @@ import SessionCard from '../../../components/session/SessionCard/SessionCard.tsx
 import StartSessionDialog from '../../../components/session/StartSessionDialog/StartSessionDialog.tsx';
 
 /**
- * The bot control panel. The data flow (useSessions -> SessionCard) is
- * provided; TODO(student): finish StartSessionDialog and SessionCard.
+ * The bot control panel: StartSessionDialog creates gol.mk extraction
+ * sessions, each SessionCard drives its lifecycle (start/stop) and links to
+ * the live trace on the details page.
  */
 const SessionsPage = () => {
   const { sessions, loading } = useSessions();
