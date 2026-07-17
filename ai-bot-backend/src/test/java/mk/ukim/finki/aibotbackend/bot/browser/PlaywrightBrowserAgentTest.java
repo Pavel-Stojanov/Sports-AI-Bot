@@ -24,6 +24,7 @@ public class PlaywrightBrowserAgentTest {
         agent.navigateTo("data:text/html;charset=UTF-8,<html><head><title>Тест</title></head>"
             + "<body><h1>Здраво Македонијо</h1>"
             + "<a href='https://example.com/x'>Линк</a>"
+            + "<img src='https://example.com/photo.jpg'>"
             + "<script>var hidden = 'NOISE';</script></body></html>");
 
         PageSnapshot snapshot = agent.snapshot();
@@ -32,6 +33,7 @@ public class PlaywrightBrowserAgentTest {
         assertThat(snapshot.domContent())
             .contains("Здраво Македонијо")
             .contains("https://example.com/x")
+            .contains("[image: https://example.com/photo.jpg]")
             .doesNotContain("NOISE");
         assertThat(snapshot.screenshotBase64()).isNull();
     }

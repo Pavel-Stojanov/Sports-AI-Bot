@@ -6,6 +6,7 @@ import mk.ukim.finki.aibotbackend.bot.llm.BotAction;
 import mk.ukim.finki.aibotbackend.bot.llm.BotDecision;
 import mk.ukim.finki.aibotbackend.bot.llm.LlmClient;
 import mk.ukim.finki.aibotbackend.model.dto.CreateExtractedPostDto;
+import mk.ukim.finki.aibotbackend.model.enums.MediaType;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -45,6 +46,24 @@ public class GolMkContentExtractorTest {
         assertThat(post.authorHandle()).isEqualTo("gol.mk");
         assertThat(post.macedonianConfidence()).isNull();
         assertThat(post.postedAt()).isNotNull();
+    }
+
+    @Test
+    void mediaUrlsBecomeImageMediaItems() throws Exception {
+        List<CreateExtractedPostDto> posts = GolMkContentExtractor.parseItems("""
+            [{"title": "Наслов", "content": "Текст на статијата.",
+              "summary": "Резиме.", "sourceUrl": null, "postedAt": null,
+              "mediaUrls": ["https://www.gol.mk/images/photo.jpg", ""]}]""",
+            "https://www.gol.mk/fudbal/statija");
+
+        assertThat(posts).hasSize(1);
+        assertThat(posts.getFirst().mediaItems())
+            .hasSize(1)
+            .first()
+            .satisfies(media -> {
+                assertThat(media.type()).isEqualTo(MediaType.IMAGE);
+                assertThat(media.sourceUrl()).isEqualTo("https://www.gol.mk/images/photo.jpg");
+            });
     }
 
     @Test

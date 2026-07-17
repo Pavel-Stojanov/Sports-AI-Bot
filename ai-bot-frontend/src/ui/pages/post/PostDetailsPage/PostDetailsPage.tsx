@@ -58,6 +58,19 @@ const PostDetailsPage = () => {
         </Paper>
       )}
       <Typography variant='body1' sx={{ whiteSpace: 'pre-wrap', mb: 2 }}>{post.content}</Typography>
+      {post.mediaItems.length > 0 && (
+        <Stack direction='row' spacing={1} sx={{ mb: 2, flexWrap: 'wrap' }}>
+          {post.mediaItems.map((media) => (
+            <Box
+              key={media.id}
+              component='img'
+              src={media.sourceUrl}
+              alt={`Media #${media.id}`}
+              sx={{ maxWidth: 320, maxHeight: 200, borderRadius: 1, objectFit: 'cover' }}
+            />
+          ))}
+        </Stack>
+      )}
       {post.sourceUrl && (
         <Link href={post.sourceUrl} target='_blank' rel='noopener'>Source: {post.sourceUrl}</Link>
       )}

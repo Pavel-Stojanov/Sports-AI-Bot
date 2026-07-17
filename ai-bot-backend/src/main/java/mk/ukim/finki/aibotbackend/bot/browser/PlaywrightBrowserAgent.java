@@ -84,6 +84,12 @@ public class PlaywrightBrowserAgent implements BrowserAgent {
                 link.appendText(" [" + href + "]");
             }
         }
+        for (Element image : document.select("img[src]")) {
+            String src = image.absUrl("src");
+            if (!src.isBlank() && !src.startsWith("data:")) {
+                image.appendText(" [image: " + src + "]");
+            }
+        }
         String text = document.body() != null ? document.body().text() : document.text();
         if (text.length() > MAX_DOM_CHARS) {
             text = text.substring(0, MAX_DOM_CHARS);

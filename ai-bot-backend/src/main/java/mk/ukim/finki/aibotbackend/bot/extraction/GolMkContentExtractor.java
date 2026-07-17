@@ -12,6 +12,8 @@ import lombok.extern.slf4j.Slf4j;
 import mk.ukim.finki.aibotbackend.bot.browser.PageSnapshot;
 import mk.ukim.finki.aibotbackend.bot.llm.LlmClient;
 import mk.ukim.finki.aibotbackend.model.dto.CreateExtractedPostDto;
+import mk.ukim.finki.aibotbackend.model.dto.CreateMediaItemDto;
+import mk.ukim.finki.aibotbackend.model.enums.MediaType;
 import org.springframework.stereotype.Component;
 
 /**
@@ -37,9 +39,14 @@ public class GolMkContentExtractor implements ContentExtractor {
          "content": "the full available Macedonian body text, WITHOUT repeating the title",
          "summary": "2-3 full sentences in Macedonian describing what happened
                      (who won, the score, the key moments) — never just a
-                     restatement of the team names",
+                     restatement of the team names. If the page shows a match
+                     timeline, write the summary as a chronological TLDR of the
+                     key moments instead: every goal (minute, scorer), penalties,
+                     red and yellow cards, injuries and decisive substitutions",
          "sourceUrl": "absolute URL of the item from [brackets], or null",
-         "postedAt": "ISO date or date-time if shown, else null"}
+         "postedAt": "ISO date or date-time if shown, else null",
+         "mediaUrls": ["absolute [image: ...] URLs that belong to THIS article
+                        (its photos), excluding logos, icons and ads — else []"]}
         If the page is a listing/scoreboard with no full article text, reply [].
         """;
 
@@ -89,10 +96,24 @@ public class GolMkContentExtractor implements ContentExtractor {
                 sourceUrl,
                 parsePostedAt(item.path("postedAt").asText(null)),
                 null,
-                List.of()
+                parseMediaUrls(item.path("mediaUrls"))
             ));
         }
         return posts;
+    }
+
+    private static List<CreateMediaItemDto> parseMediaUrls(JsonNode mediaUrls) {
+        if (!mediaUrls.isArray()) {
+            return List.of();
+        }
+        List<CreateMediaItemDto> items = new ArrayList<>();
+        for (JsonNode url : mediaUrls) {
+            String value = url.asText("");
+            if (!value.isBlank()) {
+                items.add(new CreateMediaItemDto(MediaType.IMAGE, value, null));
+            }
+        }
+        return items;
     }
 
     private static String stripFences(String raw) {
