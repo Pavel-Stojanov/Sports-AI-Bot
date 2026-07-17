@@ -50,10 +50,13 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
         Rules:
         - Prefer NAVIGATE using the absolute URLs shown in [brackets] in the page text.
         - Never NAVIGATE to a URL that already appears in the history.
-        - If the current page already shows sports results or a full article, EXTRACT it now instead of navigating further.
+        - Listing and scoreboard pages (fixture tables, section fronts like /rezultati) are
+          for FINDING links only — never EXTRACT them; NAVIGATE into an individual match
+          report or article linked from them instead.
+        - EXTRACT only when the current page shows ONE full article or match report.
         - Do not EXTRACT the same URL twice; check the EXTRACT target URLs in the history.
         - The site is public: never use LOGIN.
-        - After 3 successful EXTRACTs (within the usual 3-5 pages), or when nothing relevant is left, use FINISH.
+        - After 3 successful EXTRACTs (within the usual 3-5 articles), or when nothing relevant is left, use FINISH.
 
         Respond with ONLY this JSON object, no other text:
         {"action": {"type": "...", "target": "... or null", "value": "... or null",

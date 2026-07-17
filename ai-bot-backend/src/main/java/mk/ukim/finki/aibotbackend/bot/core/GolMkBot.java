@@ -40,11 +40,13 @@ public class GolMkBot extends AbstractSocialNetworkBot {
 
     @Override
     protected String buildGoal(ExtractionTarget target) {
-        String rules = " Use EXTRACT on every page that shows sports results or a full article."
+        String rules = " Listing and scoreboard pages are only for finding links:"
+            + " from them NAVIGATE into individual match reports and articles, and"
+            + " use EXTRACT only on a page showing one full article or match report."
             + " Prefer NAVIGATE with absolute URLs shown in [brackets] in the page text."
-            + " Use FINISH once you have extracted from 3 to 5 pages.";
+            + " Use FINISH once you have extracted from 3 to 5 articles.";
         return switch (target.getType()) {
-            case FEED_URL -> "Open %s on gol.mk, a Macedonian sports portal, and extract the sports results and match reports listed there.%s"
+            case FEED_URL -> "Open %s on gol.mk, a Macedonian sports portal, and extract the individual match reports and articles linked from there.%s"
                 .formatted(target.getValue(), rules);
             case HASHTAG -> "Open the '%s' section of gol.mk (start at %s and use the section navigation) and extract the most recent match reports and results.%s"
                 .formatted(target.getValue(), HOME, rules);
