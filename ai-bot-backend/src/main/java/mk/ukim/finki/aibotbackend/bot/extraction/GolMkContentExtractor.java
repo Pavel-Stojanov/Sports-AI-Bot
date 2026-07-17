@@ -28,15 +28,19 @@ public class GolMkContentExtractor implements ContentExtractor {
     static final String EXTRACTION_SYSTEM_PROMPT = """
         You extract structured sports content from pages of gol.mk, a
         Macedonian sports portal. From the page text you receive, extract every
-        distinct sports article or match result. Skip navigation, ads and
-        non-sport items. Reply with ONLY a JSON array (no other text); each
-        element:
+        distinct sports article or match report that has real editorial text
+        (at least a few sentences). Skip navigation, ads, non-sport items, and
+        bare fixture or score rows like "Вардар 10:00 Пелистер" — a scoreboard
+        line alone is NOT an article. Reply with ONLY a JSON array (no other
+        text); each element:
         {"title": "the headline in Macedonian",
-         "content": "the full available Macedonian text of the article/result",
-         "summary": "2-3 sentence summary in Macedonian focusing on the result",
+         "content": "the full available Macedonian body text, WITHOUT repeating the title",
+         "summary": "2-3 full sentences in Macedonian describing what happened
+                     (who won, the score, the key moments) — never just a
+                     restatement of the team names",
          "sourceUrl": "absolute URL of the item from [brackets], or null",
          "postedAt": "ISO date or date-time if shown, else null"}
-        If the page contains no sports content, reply [].
+        If the page is a listing/scoreboard with no full article text, reply [].
         """;
 
     private final LlmClient llmClient;
