@@ -23,9 +23,10 @@ import org.springframework.stereotype.Component;
 public class PlaywrightBrowserAgent implements BrowserAgent {
     // Kept small because free-tier LLM providers (e.g. Groq) enforce tight
     // tokens-per-minute/tokens-per-day budgets, and every decision/extraction
-    // call ships one snapshot; 15k chars (~7k tokens) burned a full day's
-    // quota in a single session.
-    private static final int MAX_DOM_CHARS = 8_000;
+    // call ships one snapshot. Macedonian Cyrillic tokenizes ~1 token/char on
+    // Llama; 8k-char snapshots exceeded 6k-token/min quota. 5k chars keeps full
+    // requests under quota.
+    private static final int MAX_DOM_CHARS = 5_000;
 
     private final BotProperties botProperties;
 
