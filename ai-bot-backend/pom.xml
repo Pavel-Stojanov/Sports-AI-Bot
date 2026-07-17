@@ -28,6 +28,11 @@
   </scm>
   <properties>
     <java.version>21</java.version>
+    <!-- Override Spring Boot's managed Testcontainers (1.20.5) whose bundled
+         docker-java negotiates API 1.32, rejected by Docker Engine 29+
+         (minimum API 1.40). 1.21.x ships a docker-java that negotiates a
+         supported version. -->
+    <testcontainers.version>1.21.4</testcontainers.version>
   </properties>
   <dependencies>
     <dependency>
