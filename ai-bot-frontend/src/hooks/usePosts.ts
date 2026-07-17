@@ -1,22 +1,38 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { PageResponse, PostFilter, PostResponse } from '../api/types/post.ts';
+import postApi from '../api/postApi.ts';
+import useSnackbar from './useSnackbar.ts';
 
-/**
- * TODO(student): Load a page of extracted posts (postApi.findAll) for the
- * PostsPage, re-fetching whenever the filter or page changes, with
- * loading/error state and a delete action (postApi.delete).
- */
 const usePosts = (filter: PostFilter, page: number, size: number) => {
-  void filter;
-  void page;
-  void size;
+  const { showSnackbar } = useSnackbar();
 
-  const [posts] = useState<PageResponse<PostResponse> | null>(null);
-  const [loading] = useState<boolean>(false);
+  const [posts, setPosts] = useState<PageResponse<PostResponse> | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
 
-  const onDelete = async (id: number) => {
-    void id;
-  };
+  const fetch = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await postApi.findAll(filter, page, size);
+      setPosts(response.data);
+    } catch (err) {
+      showSnackbar(err instanceof Error ? err.message : 'Failed to load posts.', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [filter, page, size, showSnackbar]);
+
+  useEffect(() => {
+    void fetch();
+  }, [fetch]);
+
+  const onDelete = useCallback(async (id: number) => {
+    try {
+      await postApi.delete(id.toString());
+      await fetch();
+    } catch (err) {
+      showSnackbar(err instanceof Error ? err.message : 'Failed to delete post.', 'error');
+    }
+  }, [fetch, showSnackbar]);
 
   return { posts, loading, onDelete };
 };
