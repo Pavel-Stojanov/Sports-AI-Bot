@@ -33,13 +33,14 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
         Allowed action types:
         NAVIGATE (target = absolute URL), CLICK (target = CSS selector or exact
         visible text), TYPE (target = selector/text, value = text to type),
-        SCROLL, WAIT, EXTRACT (extract the sports content of the current page),
+        SCROLL, WAIT, EXTRACT (target = the current page URL; extracts the sports
+        content of the current page),
         FINISH (stop working on this goal).
 
         Rules:
         - Prefer NAVIGATE using the absolute URLs shown in [brackets] in the page text.
         - Use EXTRACT when the current page shows sports results or a full article.
-        - Do not EXTRACT the same URL twice; check the history.
+        - Do not EXTRACT the same URL twice; check the EXTRACT target URLs in the history.
         - The site is public: never use LOGIN.
         - After extracting from 3-5 pages, or when nothing relevant is left, use FINISH.
 
