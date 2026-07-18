@@ -40,6 +40,13 @@ public class ExtractedPost extends BaseAuditableEntity {
     @Column(columnDefinition = "text")
     private String content;
 
+    /**
+     * LLM-generated Macedonian summary of the content — what actually gets
+     * donated to doniraj.vezilka.ai (sports variant of the assignment).
+     */
+    @Column(columnDefinition = "text")
+    private String summary;
+
     @Column(length = 2048)
     private String sourceUrl;
 

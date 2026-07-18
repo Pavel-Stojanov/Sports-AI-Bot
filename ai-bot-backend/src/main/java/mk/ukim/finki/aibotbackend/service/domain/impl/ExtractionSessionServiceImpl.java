@@ -1,8 +1,12 @@
 package mk.ukim.finki.aibotbackend.service.domain.impl;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import mk.ukim.finki.aibotbackend.model.domain.ExtractionSession;
+import mk.ukim.finki.aibotbackend.model.enums.SessionStatus;
+import mk.ukim.finki.aibotbackend.model.exception.InvalidSessionStateException;
+import mk.ukim.finki.aibotbackend.model.exception.SessionNotFoundException;
 import mk.ukim.finki.aibotbackend.repository.ExtractionSessionRepository;
 import mk.ukim.finki.aibotbackend.service.domain.ExtractionSessionService;
 import org.springframework.stereotype.Service;
@@ -17,38 +21,62 @@ public class ExtractionSessionServiceImpl implements ExtractionSessionService {
 
     @Override
     public List<ExtractionSession> findAll() {
-        throw new UnsupportedOperationException("TODO(student): Implement ExtractionSessionService.findAll().");
+        return extractionSessionRepository.findAll();
     }
 
     @Override
     public Optional<ExtractionSession> findById(Long id) {
-        throw new UnsupportedOperationException("TODO(student): Implement ExtractionSessionService.findById().");
+        return extractionSessionRepository.findById(id);
     }
 
     @Override
     public ExtractionSession create(ExtractionSession session) {
-        throw new UnsupportedOperationException("TODO(student): Implement ExtractionSessionService.create().");
+        return extractionSessionRepository.save(session);
     }
 
     @Override
     public ExtractionSession start(Long id) {
-        // TODO(student): Validate the current status (only CREATED or PAUSED may
-        //  start), set the status to RUNNING, stamp startedAt and save.
-        throw new UnsupportedOperationException("TODO(student): Implement ExtractionSessionService.start().");
+        ExtractionSession session = getOrThrow(id);
+        if (session.getStatus() != SessionStatus.CREATED && session.getStatus() != SessionStatus.PAUSED) {
+            throw new InvalidSessionStateException(id, session.getStatus());
+        }
+        session.setStatus(SessionStatus.RUNNING);
+        session.setStartedAt(LocalDateTime.now());
+        return extractionSessionRepository.save(session);
     }
 
     @Override
     public ExtractionSession stop(Long id) {
-        throw new UnsupportedOperationException("TODO(student): Implement ExtractionSessionService.stop().");
+        ExtractionSession session = getOrThrow(id);
+        if (session.getStatus() != SessionStatus.RUNNING) {
+            throw new InvalidSessionStateException(id, session.getStatus());
+        }
+        session.setStatus(SessionStatus.PAUSED);
+        return extractionSessionRepository.save(session);
     }
 
     @Override
     public ExtractionSession complete(Long id) {
-        throw new UnsupportedOperationException("TODO(student): Implement ExtractionSessionService.complete().");
+        ExtractionSession session = getOrThrow(id);
+        if (session.getStatus() != SessionStatus.RUNNING) {
+            throw new InvalidSessionStateException(id, session.getStatus());
+        }
+        session.setStatus(SessionStatus.COMPLETED);
+        session.setFinishedAt(LocalDateTime.now());
+        return extractionSessionRepository.save(session);
     }
 
     @Override
     public ExtractionSession fail(Long id) {
-        throw new UnsupportedOperationException("TODO(student): Implement ExtractionSessionService.fail().");
+        ExtractionSession session = getOrThrow(id);
+        session.setStatus(SessionStatus.FAILED);
+        session.setFinishedAt(LocalDateTime.now());
+        return extractionSessionRepository.save(session);
+    }
+
+    private ExtractionSession getOrThrow(Long id) {
+        return extractionSessionRepository
+            .findById(id)
+            .orElseThrow(() -> new SessionNotFoundException(id));
     }
 }

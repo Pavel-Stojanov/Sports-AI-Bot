@@ -13,5 +13,7 @@ public enum SocialNetwork {
     TIKTOK,
     YOUTUBE,
     THREADS,
-    LINKEDIN
+    LINKEDIN,
+    /** gol.mk — Macedonian sports portal (sports variant of the assignment). */
+    SPORTS_PORTAL_GOL
 }

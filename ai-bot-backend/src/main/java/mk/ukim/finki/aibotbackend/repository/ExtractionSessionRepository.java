@@ -6,6 +6,6 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface ExtractionSessionRepository extends JpaRepository<ExtractionSession, Long> {
-    // TODO(student): Add the derived or custom queries your services need
-    //  (e.g. find sessions by status, by social network, ...).
+    // The provided JpaRepository methods cover every query the session
+    // services need — no custom queries required for the gol.mk bot.
 }

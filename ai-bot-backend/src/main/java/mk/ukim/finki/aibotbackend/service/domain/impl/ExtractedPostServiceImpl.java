@@ -7,6 +7,9 @@ import mk.ukim.finki.aibotbackend.model.dto.PostFilterDto;
 import mk.ukim.finki.aibotbackend.repository.ExtractedPostRepository;
 import mk.ukim.finki.aibotbackend.service.domain.ExtractedPostService;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -19,29 +22,51 @@ public class ExtractedPostServiceImpl implements ExtractedPostService {
 
     @Override
     public Page<ExtractedPost> findAll(PostFilterDto filter, int page, int size) {
-        // TODO(student): Combine the non-null filter fields into a query, e.g.
-        //  with JPA Specifications (ExtractedPostRepository already extends
-        //  JpaSpecificationExecutor).
-        throw new UnsupportedOperationException("TODO(student): Implement ExtractedPostService.findAll().");
+        Specification<ExtractedPost> spec = (root, query, cb) -> cb.conjunction();
+        if (filter.sessionId() != null) {
+            spec = spec.and((root, query, cb) ->
+                cb.equal(root.get("session").get("id"), filter.sessionId()));
+        }
+        if (filter.socialNetwork() != null) {
+            spec = spec.and((root, query, cb) ->
+                cb.equal(root.get("session").get("socialNetwork"), filter.socialNetwork()));
+        }
+        if (filter.minMacedonianConfidence() != null) {
+            spec = spec.and((root, query, cb) ->
+                cb.greaterThanOrEqualTo(root.get("macedonianConfidence"), filter.minMacedonianConfidence()));
+        }
+        if (filter.donated() != null) {
+            spec = spec.and((root, query, cb) -> filter.donated()
+                ? cb.isNotNull(root.get("donationBatch"))
+                : cb.isNull(root.get("donationBatch")));
+        }
+        if (filter.search() != null && !filter.search().isBlank()) {
+            spec = spec.and((root, query, cb) ->
+                cb.like(cb.lower(root.get("content")), "%" + filter.search().toLowerCase() + "%"));
+        }
+        return extractedPostRepository.findAll(
+            spec, PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")));
     }
 
     @Override
     public Optional<ExtractedPost> findById(Long id) {
-        throw new UnsupportedOperationException("TODO(student): Implement ExtractedPostService.findById().");
+        return extractedPostRepository.findById(id);
     }
 
     @Override
     public List<ExtractedPost> findAllById(List<Long> ids) {
-        throw new UnsupportedOperationException("TODO(student): Implement ExtractedPostService.findAllById().");
+        return extractedPostRepository.findAllById(ids);
     }
 
     @Override
     public List<ExtractedPost> saveAll(List<ExtractedPost> posts) {
-        throw new UnsupportedOperationException("TODO(student): Implement ExtractedPostService.saveAll().");
+        return extractedPostRepository.saveAll(posts);
     }
 
     @Override
     public Optional<ExtractedPost> deleteById(Long id) {
-        throw new UnsupportedOperationException("TODO(student): Implement ExtractedPostService.deleteById().");
+        Optional<ExtractedPost> post = extractedPostRepository.findById(id);
+        post.ifPresent(extractedPostRepository::delete);
+        return post;
     }
 }
