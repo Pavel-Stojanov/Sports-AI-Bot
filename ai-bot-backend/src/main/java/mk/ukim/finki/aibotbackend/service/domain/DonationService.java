@@ -26,15 +26,22 @@ public interface DonationService {
 
     /**
      * Submits an APPROVED batch to doniraj.vezilka.ai via the
-     * {@code VezilkaClient}, stores the returned reference, stamps
-     * {@code submittedAt} and transitions the batch to SUBMITTED.
+     * {@code VezilkaClient}, one item per post, stamps {@code submittedAt}
+     * and records Vezilka's verdict on every post.
+     *
+     * <p>Vezilka moderates automatically and answers immediately, so a batch
+     * that is donated in full settles straight to ACCEPTED (at least one post
+     * entered the corpus) or REJECTED. A batch large enough to need several
+     * requests can be cut short — by the hourly rate limit, for instance — and
+     * is left SUBMITTED with the verdicts received so far, for
+     * {@link #refreshSubmittedStatuses()} to settle.</p>
      */
     DonationBatch submit(Long id);
 
     /**
-     * Polls Vezilka for every SUBMITTED batch and updates its status
-     * (ACCEPTED / REJECTED). Called periodically by the
-     * {@code DonationStatusScheduler}.
+     * Settles every batch still left in SUBMITTED by reading its donated posts
+     * back from Vezilka and confirming their recorded verdicts. Called
+     * periodically by the {@code DonationStatusScheduler}.
      */
     void refreshSubmittedStatuses();
 }

@@ -1,7 +1,8 @@
 package mk.ukim.finki.aibotbackend.service;
 
 import jakarta.transaction.Transactional;
-import mk.ukim.finki.aibotbackend.integration.vezilka.DonationReceipt;
+import mk.ukim.finki.aibotbackend.integration.vezilka.DonationItemResult;
+import mk.ukim.finki.aibotbackend.integration.vezilka.DonationResponse;
 import mk.ukim.finki.aibotbackend.integration.vezilka.VezilkaClient;
 import mk.ukim.finki.aibotbackend.model.domain.DonationBatch;
 import mk.ukim.finki.aibotbackend.model.domain.ExtractedPost;
@@ -10,6 +11,8 @@ import mk.ukim.finki.aibotbackend.model.enums.DonationStatus;
 import mk.ukim.finki.aibotbackend.model.enums.SocialNetwork;
 import mk.ukim.finki.aibotbackend.model.exception.InvalidDonationStateException;
 import mk.ukim.finki.aibotbackend.model.exception.PostNotFoundException;
+import mk.ukim.finki.aibotbackend.model.exception.VezilkaIntegrationException;
+import mk.ukim.finki.aibotbackend.repository.DonationBatchRepository;
 import mk.ukim.finki.aibotbackend.repository.ExtractedPostRepository;
 import mk.ukim.finki.aibotbackend.repository.ExtractionSessionRepository;
 import mk.ukim.finki.aibotbackend.service.domain.DonationService;
@@ -65,6 +68,9 @@ public class DonationServiceIntegrationTest {
     @Autowired
     private ExtractedPostRepository extractedPostRepository;
 
+    @Autowired
+    private DonationBatchRepository donationBatchRepository;
+
     private ExtractedPost post;
 
     @BeforeEach
@@ -77,10 +83,16 @@ public class DonationServiceIntegrationTest {
             "https://www.gol.mk/fudbal/vardar-pobedi", null, 0.95));
     }
 
+    private static DonationResponse acceptedResponse(String id) {
+        return new DonationResponse(
+            List.of(new DonationItemResult(id, "accepted", "text", false, 0, null)),
+            1, 1, 0, 0);
+    }
+
     @Test
     void testDonationWorkflow() {
-        when(vezilkaClient.submitTextDonation(any()))
-            .thenReturn(new DonationReceipt("VEZ-123", "received"));
+        when(vezilkaClient.submitTextDonations(any()))
+            .thenReturn(acceptedResponse("VEZ-123"));
 
         DonationBatch batch = donationService.createBatch(List.of(post.getId()));
         assertThat(batch.getStatus()).isEqualTo(DonationStatus.DRAFT);
@@ -89,21 +101,72 @@ public class DonationServiceIntegrationTest {
         assertThat(donationService.approve(batch.getId()).getStatus())
             .isEqualTo(DonationStatus.APPROVED);
 
+        // Vezilka decides synchronously, so submit() already knows the verdict.
         DonationBatch submitted = donationService.submit(batch.getId());
-        assertThat(submitted.getStatus()).isEqualTo(DonationStatus.SUBMITTED);
+        assertThat(submitted.getStatus()).isEqualTo(DonationStatus.ACCEPTED);
         assertThat(submitted.getVezilkaReference()).isEqualTo("VEZ-123");
         assertThat(submitted.getSubmittedAt()).isNotNull();
+        assertThat(extractedPostRepository.findById(post.getId()).orElseThrow())
+            .satisfies(donated -> {
+                assertThat(donated.getVezilkaId()).isEqualTo("VEZ-123");
+                assertThat(donated.getRejectionReason()).isNull();
+            });
     }
 
     @Test
-    void testRefreshSubmittedStatuses() {
-        when(vezilkaClient.submitTextDonation(any()))
-            .thenReturn(new DonationReceipt("VEZ-456", "received"));
-        when(vezilkaClient.checkStatus("VEZ-456")).thenReturn(DonationStatus.ACCEPTED);
+    void testRejectedPostLeavesBatchRejectedWithReason() {
+        when(vezilkaClient.submitTextDonations(any())).thenReturn(new DonationResponse(
+            List.of(new DonationItemResult("VEZ-456", "rejected", "text", false, 0, "not_macedonian")),
+            1, 0, 1, 0));
+
+        DonationBatch batch = donationService.createBatch(List.of(post.getId()));
+        donationService.approve(batch.getId());
+
+        DonationBatch submitted = donationService.submit(batch.getId());
+        assertThat(submitted.getStatus()).isEqualTo(DonationStatus.REJECTED);
+        assertThat(submitted.getVezilkaReference()).isNull();
+        assertThat(extractedPostRepository.findById(post.getId()).orElseThrow().getRejectionReason())
+            .isEqualTo("not_macedonian");
+    }
+
+    @Test
+    void testDedupedPostCountsAsAccepted() {
+        when(vezilkaClient.submitTextDonations(any())).thenReturn(new DonationResponse(
+            List.of(new DonationItemResult("VEZ-789", "rejected", "text", true, 0, null)),
+            1, 0, 0, 1));
+
+        DonationBatch batch = donationService.createBatch(List.of(post.getId()));
+        donationService.approve(batch.getId());
+
+        assertThat(donationService.submit(batch.getId()).getStatus())
+            .isEqualTo(DonationStatus.ACCEPTED);
+    }
+
+    @Test
+    void testFailedSubmissionLeavesBatchApproved() {
+        when(vezilkaClient.submitTextDonations(any()))
+            .thenThrow(new VezilkaIntegrationException("Vezilka rate limit exceeded"));
+
+        DonationBatch batch = donationService.createBatch(List.of(post.getId()));
+        donationService.approve(batch.getId());
+
+        // Nothing reached the corpus, so the batch stays submittable.
+        assertThatThrownBy(() -> donationService.submit(batch.getId()))
+            .isInstanceOf(VezilkaIntegrationException.class);
+    }
+
+    @Test
+    void testRefreshSettlesSubmittedBatch() {
+        when(vezilkaClient.submitTextDonations(any())).thenReturn(acceptedResponse("VEZ-321"));
+        when(vezilkaClient.checkStatus("VEZ-321")).thenReturn(DonationStatus.ACCEPTED);
 
         DonationBatch batch = donationService.createBatch(List.of(post.getId()));
         donationService.approve(batch.getId());
         donationService.submit(batch.getId());
+        // A batch cut short by the rate limit is left SUBMITTED with its
+        // verdicts; reproduce that state and let the scheduler settle it.
+        batch.setStatus(DonationStatus.SUBMITTED);
+        donationBatchRepository.save(batch);
 
         donationService.refreshSubmittedStatuses();
 
@@ -119,8 +182,6 @@ public class DonationServiceIntegrationTest {
 
     @Test
     void testApproveFromWrongStateThrows() {
-        when(vezilkaClient.submitTextDonation(any()))
-            .thenReturn(new DonationReceipt("VEZ-789", "received"));
         DonationBatch batch = donationService.createBatch(List.of(post.getId()));
         donationService.approve(batch.getId());
 
