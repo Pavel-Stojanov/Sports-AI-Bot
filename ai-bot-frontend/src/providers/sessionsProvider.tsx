@@ -63,11 +63,12 @@ const SessionsProvider = ({ children }: { children: React.ReactNode }) => {
     void fetch();
   }, [fetch]);
 
+  const hasRunningSession = sessions.some((session) => session.status === 'RUNNING');
   useEffect(() => {
-    if (!sessions.some((session) => session.status === 'RUNNING')) return;
+    if (!hasRunningSession) return;
     const timer = setInterval(() => void fetch(true), 3000);
     return () => clearInterval(timer);
-  }, [sessions, fetch]);
+  }, [hasRunningSession, fetch]);
 
   const value = useMemo(
     () => ({ sessions, loading, onCreate, onStart, onStop }),

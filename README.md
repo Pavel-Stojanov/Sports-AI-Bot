@@ -44,13 +44,17 @@ that still contain unsent posts. V1 through V5 are unchanged.
 ### Session and donation behavior
 
 Stop takes effect at the next action boundary, after an in-flight browser or LLM
-call returns. Resume starts navigation again. Posts saved by completed targets
+call returns. An LLM call that times out or answers with a 5xx status is retried
+twice, two and four seconds apart, before the session fails. A 429 waits for the
+provider's `Retry-After` delay, up to three times. Resume starts navigation again. Posts saved by completed targets
 remain in the database and are deduplicated within that session. A target that
 was interrupted before its posts were saved must be extracted again.
 
 Vezilka returns final per-item verdicts synchronously. HTTP 200 can mean every
 item was rejected. Rejected items are not retried, even when the response has no
-ID. Unsent items in a partial batch retain their pending status and retry after
+ID. A deduped item counts as accepted and needs no ID, because the content is
+already in the corpus. A status the client does not know is stored as a
+rejection that names the status, so it is visible and never resent. Unsent items in a partial batch retain their pending status and retry after
 the API's `Retry-After` delay. The scheduler checks once a minute. If the first
 request fails before any verdict arrives, the batch remains APPROVED for manual
 retry after the delay.

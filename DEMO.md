@@ -68,7 +68,9 @@ individual results. Assignment to a draft batch is not acceptance.
 
 If part of a batch fails, the known verdicts remain stored. Only unsent posts
 retry after the server's delay. A rejection without an ID is still final.
-Duplicates count as accepted because the content is already present.
+Duplicates count as accepted because the content is already present, with or
+without an ID. A status the client does not recognise is stored as a rejection
+that names the status, so nothing unknown is resent.
 
 ## Code to have ready
 
@@ -96,7 +98,8 @@ validation, retry timing and state transitions.
 
 **What happens when the model returns invalid JSON?** The client validates the
 required fields and allows one repair attempt. A second invalid response fails
-the session and appears in the trace.
+the session and appears in the trace. A timeout or a 5xx answer from the provider
+is retried twice before the session fails, so one slow request does not end a run.
 
 **What does COMPLETED mean?** The run ended with saved content. It does not prove
 that the bot found every relevant article. The loop also has a step limit.
