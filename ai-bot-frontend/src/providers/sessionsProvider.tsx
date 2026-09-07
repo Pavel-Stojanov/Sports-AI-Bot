@@ -17,10 +17,14 @@ const SessionsProvider = ({ children }: { children: React.ReactNode }) => {
   const [sessions, setSessions] = useState<SessionResponse[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const requestNumber = useRef(0);
+  const inFlight = useRef(false);
   const cancelRequests = useCallback(() => { requestNumber.current++; }, []);
 
   const fetch = useCallback(async (silent = false) => {
+    // A slow response must not be replaced by the next poll before it arrives.
+    if (silent && inFlight.current) return;
     const request = ++requestNumber.current;
+    inFlight.current = true;
     if (!silent) setLoading(true);
 
     try {
@@ -29,7 +33,10 @@ const SessionsProvider = ({ children }: { children: React.ReactNode }) => {
     } catch (err) {
       if (request === requestNumber.current) showSnackbar(extractErrorMessage(err, 'Failed to load sessions.'), 'error');
     } finally {
-      if (request === requestNumber.current) setLoading(false);
+      if (request === requestNumber.current) {
+        inFlight.current = false;
+        setLoading(false);
+      }
     }
   }, [showSnackbar]);
 
