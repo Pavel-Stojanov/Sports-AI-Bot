@@ -105,9 +105,7 @@ public class VezilkaClientImpl implements BatchVezilkaClient {
 
     private void validateResponse(DonationResponse response, int expected) {
         if (response == null || response.results() == null || response.results().size() != expected
-            || response.results().stream().anyMatch(item -> item == null
-                || !("accepted".equals(item.status()) || "rejected".equals(item.status()))
-                || (item.isAccepted() && (item.id() == null || item.id().isBlank())))) {
+            || response.results().stream().anyMatch(item -> item == null || !item.isWellFormed())) {
             throw new VezilkaIntegrationException("Vezilka returned an incomplete or invalid donation response.");
         }
     }

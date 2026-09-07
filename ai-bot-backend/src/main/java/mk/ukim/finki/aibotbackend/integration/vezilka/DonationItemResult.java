@@ -34,4 +34,28 @@ public record DonationItemResult(
     public boolean isAccepted() {
         return deduped || ACCEPTED.equalsIgnoreCase(status);
     }
+
+    /**
+     * Whether the item carries a verdict the service can store. A deduped item
+     * needs no id (nothing new was created); an accepted one must name the
+     * record it created. Unknown statuses are kept and stored as rejections,
+     * because resending them would only spend the rate limit.
+     */
+    public boolean isWellFormed() {
+        if (deduped) {
+            return true;
+        }
+        if (status == null || status.isBlank()) {
+            return false;
+        }
+        return !ACCEPTED.equalsIgnoreCase(status) || (id != null && !id.isBlank());
+    }
+
+    /** The reason to store for a non-accepted item; never null. */
+    public String describeRejection() {
+        if (rejectionReason != null && !rejectionReason.isBlank()) {
+            return rejectionReason;
+        }
+        return "rejected".equalsIgnoreCase(status) ? "rejected" : "unexpected status '" + status + "'";
+    }
 }

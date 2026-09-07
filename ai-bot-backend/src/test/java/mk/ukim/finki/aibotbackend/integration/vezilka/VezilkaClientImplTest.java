@@ -109,6 +109,36 @@ class VezilkaClientImplTest {
     }
 
     @Test
+    void dedupedItemsNeedNoId() {
+        response = """
+            {"results":[{"id":null,"status":"accepted","contentType":"text","deduped":true}],
+             "total":1,"accepted":0,"rejected":0,"duplicates":1}
+            """;
+        assertThat(donate().results().getFirst().isAccepted()).isTrue();
+    }
+
+    @Test
+    void unknownStatusesAreKeptAsFinalRejections() {
+        status = 200;
+        response = """
+            {"results":[{"id":"one","status":"quarantined","contentType":"text","deduped":false}],
+             "total":1,"accepted":0,"rejected":1,"duplicates":0}
+            """;
+        DonationItemResult result = donate().results().getFirst();
+        assertThat(result.isAccepted()).isFalse();
+        assertThat(result.describeRejection()).isEqualTo("unexpected status 'quarantined'");
+    }
+
+    @Test
+    void acceptedItemsWithoutAnIdAreInvalid() {
+        response = """
+            {"results":[{"id":null,"status":"accepted","contentType":"text","deduped":false}],
+             "total":1,"accepted":1,"rejected":0,"duplicates":0}
+            """;
+        assertThatThrownBy(this::donate).isInstanceOf(VezilkaIntegrationException.class);
+    }
+
+    @Test
     void rejectsMissingItemResults() {
         response = "{}";
         assertThatThrownBy(this::donate).isInstanceOf(VezilkaIntegrationException.class);

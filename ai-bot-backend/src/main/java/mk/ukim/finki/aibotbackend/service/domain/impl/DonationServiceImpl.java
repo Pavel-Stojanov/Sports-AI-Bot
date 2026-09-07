@@ -116,7 +116,8 @@ public class DonationServiceImpl implements DonationService {
             try {
                 // The POST verdict is final. Retry missing items, never rejected or accepted items.
                 submitPending(batch);
-            } catch (VezilkaIntegrationException exception) {
+            } catch (RuntimeException exception) {
+                // One broken batch must not stop the retries of the others.
                 log.warn("Donation batch {} retry failed: {}", batch.getId(), exception.getMessage());
             }
         }
@@ -156,9 +157,7 @@ public class DonationServiceImpl implements DonationService {
 
     private void applyResults(List<ExtractedPost> chunk, DonationResponse response) {
         if (response == null || response.results() == null || response.results().size() != chunk.size()
-            || response.results().stream().anyMatch(result -> result == null
-                || !("accepted".equals(result.status()) || "rejected".equals(result.status()))
-                || (result.isAccepted() && (result.id() == null || result.id().isBlank())))) {
+            || response.results().stream().anyMatch(result -> result == null || !result.isWellFormed())) {
             throw new VezilkaIntegrationException("Vezilka returned incomplete or invalid item results.");
         }
         for (int index = 0; index < chunk.size(); index++) {
@@ -166,8 +165,7 @@ public class DonationServiceImpl implements DonationService {
             ExtractedPost post = chunk.get(index);
             post.setVezilkaId(result.id());
             post.setDonationStatus(result.isAccepted() ? DonationStatus.ACCEPTED : DonationStatus.REJECTED);
-            post.setRejectionReason(result.isAccepted() ? null :
-                result.rejectionReason() == null ? "rejected" : result.rejectionReason());
+            post.setRejectionReason(result.isAccepted() ? null : result.describeRejection());
         }
         extractedPostService.saveAll(chunk);
     }
@@ -175,7 +173,9 @@ public class DonationServiceImpl implements DonationService {
     private void updateReference(DonationBatch batch) {
         batch.setVezilkaReference(batch.getPosts().stream()
             .filter(post -> post.getDonationStatus() == DonationStatus.ACCEPTED)
-            .map(ExtractedPost::getVezilkaId).findFirst().orElse(null));
+            .map(ExtractedPost::getVezilkaId)
+            .filter(Objects::nonNull) // deduped posts are accepted without an id
+            .findFirst().orElse(null));
     }
 
     private DonationBatch getForUpdate(Long id) {

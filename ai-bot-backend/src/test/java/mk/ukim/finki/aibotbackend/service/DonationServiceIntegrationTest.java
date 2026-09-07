@@ -122,6 +122,33 @@ public class DonationServiceIntegrationTest {
     }
 
     @Test
+    void dedupedItemWithoutIdCountsAsAccepted() {
+        when(vezilkaClient.submitTextDonations(any())).thenReturn(new DonationResponse(
+            List.of(new DonationItemResult(null, "accepted", "text", true, 0, null)), 1, 0, 0, 1));
+        DonationBatch batch = donationService.createBatch(List.of(post.getId()));
+        donationService.approve(batch.getId());
+        donationService.submit(batch.getId());
+        assertThat(post.getDonationStatus()).isEqualTo(DonationStatus.ACCEPTED);
+        assertThat(batch.getStatus()).isEqualTo(DonationStatus.ACCEPTED);
+        assertThat(batch.getNextRetryAt()).isNull();
+    }
+
+    @Test
+    void unexpectedStatusIsStoredAsFinalRejection() {
+        when(vezilkaClient.submitTextDonations(any())).thenReturn(new DonationResponse(
+            List.of(new DonationItemResult("one", "quarantined", "text", false, 0, null)), 1, 0, 1, 0));
+        DonationBatch batch = donationService.createBatch(List.of(post.getId()));
+        donationService.approve(batch.getId());
+        donationService.submit(batch.getId());
+        assertThat(post.getDonationStatus()).isEqualTo(DonationStatus.REJECTED);
+        assertThat(post.getRejectionReason()).isEqualTo("unexpected status 'quarantined'");
+        assertThat(batch.getStatus()).isEqualTo(DonationStatus.REJECTED);
+        batch.setStatus(DonationStatus.SUBMITTED);
+        donationService.refreshSubmittedStatuses();
+        org.mockito.Mockito.verify(vezilkaClient, org.mockito.Mockito.times(1)).submitTextDonations(any());
+    }
+
+    @Test
     void lowLanguageEvidenceCannotBeDonated() {
         post.setMacedonianConfidence(0.2);
         assertThatThrownBy(() -> donationService.createBatch(List.of(post.getId())))
