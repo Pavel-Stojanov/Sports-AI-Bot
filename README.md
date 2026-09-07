@@ -176,7 +176,7 @@ The test suite covers pause/resume generations, serialized session execution,
 partial donation retries, final rejections without IDs, retry delays across a
 committed transaction, and migration of legacy partial batches.
 
-See [the demo walkthrough](docs/demo.md) for a presentation without slides.
+See [the demo walkthrough](DEMO.md) for a presentation without slides.
 
 ## Milestone evidence
 
