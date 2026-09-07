@@ -4,6 +4,7 @@ import userApi from '../api/userApi.ts';
 import { useNavigate } from 'react-router';
 import useAuth from './useAuth.ts';
 import useSnackbar from './useSnackbar.ts';
+import extractErrorMessage from '../api/extractErrorMessage.ts';
 
 const useLogin = () => {
   const navigate = useNavigate();
@@ -19,7 +20,7 @@ const useLogin = () => {
       authLogin(response.data.token);
       navigate('/');
     } catch (err) {
-      showSnackbar(err instanceof Error ? err.message : 'Login failed. Please try again!', 'error');
+      showSnackbar(extractErrorMessage(err, 'Login failed. Please try again!'), 'error');
     } finally {
       setLoading(false);
     }

@@ -3,6 +3,7 @@ import type { RegisterRequest } from '../api/types/user.ts';
 import userApi from '../api/userApi.ts';
 import { useNavigate } from 'react-router';
 import useSnackbar from './useSnackbar.ts';
+import extractErrorMessage from '../api/extractErrorMessage.ts';
 
 const useRegister = () => {
   const navigate = useNavigate();
@@ -16,7 +17,7 @@ const useRegister = () => {
       await userApi.register(data);
       navigate('/login');
     } catch (err) {
-      showSnackbar(err instanceof Error ? err.message : 'Registration failed. Please try again!', 'error');
+      showSnackbar(extractErrorMessage(err, 'Registration failed. Please try again!'), 'error');
     } finally {
       setLoading(false);
     }
