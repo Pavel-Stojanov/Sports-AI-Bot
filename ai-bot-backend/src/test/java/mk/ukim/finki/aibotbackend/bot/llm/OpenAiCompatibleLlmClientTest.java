@@ -10,6 +10,55 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 public class OpenAiCompatibleLlmClientTest {
 
+    private static final String COMPLETION =
+        "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"ok\"}}]}";
+
+    /** Answers the given HTTP statuses in order; the last one repeats. */
+    private static com.sun.net.httpserver.HttpServer server(
+        java.util.concurrent.atomic.AtomicInteger requests, int... statuses) throws java.io.IOException {
+        var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            int index = Math.min(requests.getAndIncrement(), statuses.length - 1);
+            byte[] bytes = (statuses[index] == 200 ? COMPLETION : "{\"error\":\"down\"}")
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(statuses[index], bytes.length);
+            exchange.getResponseBody().write(bytes);
+            exchange.close();
+        });
+        server.start();
+        return server;
+    }
+
+    @Test
+    void providerOutagesAreRetriedBeforeFailing() throws Exception {
+        var requests = new java.util.concurrent.atomic.AtomicInteger();
+        var server = server(requests, 503, 200);
+        try {
+            OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(new LlmProperties(
+                "http://127.0.0.1:" + server.getAddress().getPort(), "test", "test"));
+            assertThat(client.complete("system", "user")).isEqualTo("ok");
+            assertThat(requests).hasValue(2);
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void clientErrorsAreNotRetried() throws Exception {
+        var requests = new java.util.concurrent.atomic.AtomicInteger();
+        var server = server(requests, 400);
+        try {
+            OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(new LlmProperties(
+                "http://127.0.0.1:" + server.getAddress().getPort(), "test", "test"));
+            assertThatThrownBy(() -> client.complete("system", "user"))
+                .isInstanceOf(mk.ukim.finki.aibotbackend.model.exception.BotExecutionException.class);
+            assertThat(requests).hasValue(1);
+        } finally {
+            server.stop(0);
+        }
+    }
+
     @Test
     void malformedResponsesFailTheRunAfterOneRepairAttempt() {
         var calls = new java.util.concurrent.atomic.AtomicInteger();

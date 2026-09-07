@@ -31,6 +31,9 @@ import org.springframework.web.client.RestClientResponseException;
 public class OpenAiCompatibleLlmClient implements LlmClient {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final int MAX_RATE_LIMIT_RETRIES = 3;
+    /** Timeouts, connection resets and 5xx answers from the provider are retried this often. */
+    private static final int MAX_TRANSPORT_RETRIES = 2;
+    private static final long TRANSPORT_RETRY_DELAY_MILLIS = 2_000;
     private static final long DEFAULT_RETRY_DELAY_MILLIS = 30_000L;
     private static final long MAX_RETRY_DELAY_MILLIS = 60_000L;
     private static final long RETRY_DELAY_MARGIN_MILLIS = 1_000L;
@@ -111,27 +114,41 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
                     .body(JsonNode.class);
                 return response.path("choices").path(0).path("message").path("content").asText();
             } catch (RestClientResponseException exception) {
-                if (exception.getStatusCode().value() != HttpStatus.TOO_MANY_REQUESTS.value()
-                    || retries >= MAX_RATE_LIMIT_RETRIES) {
+                boolean rateLimited = exception.getStatusCode().value() == HttpStatus.TOO_MANY_REQUESTS.value();
+                int limit = rateLimited ? MAX_RATE_LIMIT_RETRIES : MAX_TRANSPORT_RETRIES;
+                if ((!rateLimited && !exception.getStatusCode().is5xxServerError()) || retries >= limit) {
                     throw new BotExecutionException("LLM call failed: " + exception.getMessage(), exception);
                 }
                 retries++;
-                long delayMillis = retryDelayMillis(
-                    exception.getResponseHeaders() != null
-                        ? exception.getResponseHeaders().getFirst(HttpHeaders.RETRY_AFTER) : null,
-                    exception.getResponseBodyAsString());
-                log.warn("LLM rate limited (429); waiting {}ms before retry {}/{}",
-                    delayMillis, retries, MAX_RATE_LIMIT_RETRIES);
-                try {
-                    Thread.sleep(delayMillis);
-                } catch (InterruptedException interruptedException) {
-                    Thread.currentThread().interrupt();
-                    throw new BotExecutionException(
-                        "LLM call interrupted while waiting to retry after rate limit", interruptedException);
-                }
+                long delayMillis = rateLimited
+                    ? retryDelayMillis(
+                        exception.getResponseHeaders() != null
+                            ? exception.getResponseHeaders().getFirst(HttpHeaders.RETRY_AFTER) : null,
+                        exception.getResponseBodyAsString())
+                    : TRANSPORT_RETRY_DELAY_MILLIS * retries;
+                log.warn("LLM call answered HTTP {}; waiting {}ms before retry {}/{}",
+                    exception.getStatusCode().value(), delayMillis, retries, limit);
+                pause(delayMillis);
             } catch (RestClientException exception) {
-                throw new BotExecutionException("LLM call failed: " + exception.getMessage(), exception);
+                // No HTTP answer at all: timeout, reset, DNS. Worth one more try.
+                if (retries >= MAX_TRANSPORT_RETRIES) {
+                    throw new BotExecutionException("LLM call failed: " + exception.getMessage(), exception);
+                }
+                retries++;
+                long delayMillis = TRANSPORT_RETRY_DELAY_MILLIS * retries;
+                log.warn("LLM call failed ({}); waiting {}ms before retry {}/{}",
+                    exception.getMessage(), delayMillis, retries, MAX_TRANSPORT_RETRIES);
+                pause(delayMillis);
             }
+        }
+    }
+
+    private static void pause(long delayMillis) {
+        try {
+            Thread.sleep(delayMillis);
+        } catch (InterruptedException interruptedException) {
+            Thread.currentThread().interrupt();
+            throw new BotExecutionException("LLM call interrupted while waiting to retry", interruptedException);
         }
     }
 
