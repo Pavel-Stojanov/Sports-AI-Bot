@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { CreateDonationBatchRequest, DonationBatchResponse } from '../api/types/donation.ts';
 import donationApi from '../api/donationApi.ts';
 import useSnackbar from './useSnackbar.ts';
+import extractErrorMessage from '../api/extractErrorMessage.ts';
 
 const useDonations = () => {
   const { showSnackbar } = useSnackbar();
@@ -15,7 +16,7 @@ const useDonations = () => {
       const response = await donationApi.findAll();
       setDonations(response.data);
     } catch (err) {
-      showSnackbar(err instanceof Error ? err.message : 'Failed to load donations.', 'error');
+      showSnackbar(extractErrorMessage(err, 'Failed to load donations.'), 'error');
     } finally {
       setLoading(false);
     }
@@ -30,7 +31,7 @@ const useDonations = () => {
       await donationApi.add(data);
       await fetch();
     } catch (err) {
-      showSnackbar(err instanceof Error ? err.message : 'Failed to create donation batch.', 'error');
+      showSnackbar(extractErrorMessage(err, 'Failed to create donation batch.'), 'error');
     }
   }, [fetch, showSnackbar]);
 
@@ -39,7 +40,7 @@ const useDonations = () => {
       await donationApi.approve(id.toString());
       await fetch();
     } catch (err) {
-      showSnackbar(err instanceof Error ? err.message : 'Failed to approve batch.', 'error');
+      showSnackbar(extractErrorMessage(err, 'Failed to approve batch.'), 'error');
     }
   }, [fetch, showSnackbar]);
 
@@ -48,7 +49,7 @@ const useDonations = () => {
       await donationApi.submit(id.toString());
       await fetch();
     } catch (err) {
-      showSnackbar(err instanceof Error ? err.message : 'Failed to submit batch to Vezilka.', 'error');
+      showSnackbar(extractErrorMessage(err, 'Failed to submit batch to Vezilka.'), 'error');
     }
   }, [fetch, showSnackbar]);
 

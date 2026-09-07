@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { BotActionLogResponse, SessionResponse } from '../api/types/session.ts';
 import sessionApi from '../api/sessionApi.ts';
 import useSnackbar from './useSnackbar.ts';
+import extractErrorMessage from '../api/extractErrorMessage.ts';
 
 const POLL_INTERVAL_MS = 3000;
 
@@ -23,7 +24,7 @@ const useSessionDetails = (id: string) => {
       setLogs(logsResponse.data);
     } catch (err) {
       if (!silent) {
-        showSnackbar(err instanceof Error ? err.message : 'Failed to load session.', 'error');
+        showSnackbar(extractErrorMessage(err, 'Failed to load session.'), 'error');
       }
     } finally {
       if (!silent) setLoading(false);

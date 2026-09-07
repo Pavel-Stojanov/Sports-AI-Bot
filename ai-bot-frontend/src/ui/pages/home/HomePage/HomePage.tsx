@@ -17,7 +17,6 @@ const HomePage = () => {
 
   useEffect(() => {
     if (!user) {
-      setStats(null);
       return;
     }
     const fetch = async () => {
@@ -55,7 +54,7 @@ const HomePage = () => {
           the Posts page to browse what it collected, and the Donations page to
           review and submit batches.
         </Typography>
-        {stats && (
+        {user && stats && (
           <Grid container spacing={2}>
             {[
               { label: 'Extracted posts', value: stats.totalPosts },

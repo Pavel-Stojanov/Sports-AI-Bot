@@ -65,6 +65,18 @@ public class ExtractedPost extends BaseAuditableEntity {
     @JoinColumn(name = "donation_batch_id")
     private DonationBatch donationBatch;
 
+    /**
+     * Vezilka's identifier of this post as a donation, from the per-item result.
+     * Set once the batch is submitted, also for rejected items.
+     */
+    private String vezilkaId;
+
+    /**
+     * Why Vezilka rejected this post, e.g. {@code not_macedonian} or
+     * {@code text_too_short}. Null when the post was accepted.
+     */
+    private String rejectionReason;
+
     @Version
     @Column(nullable = false)
     private Long version = 0L;
