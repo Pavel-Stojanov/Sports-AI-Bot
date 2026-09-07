@@ -50,7 +50,7 @@ public class ExtractionSessionApplicationServiceImpl implements ExtractionSessio
     @Transactional
     public DisplayExtractionSessionDto start(Long id) {
         ExtractionSession session = extractionSessionService.start(id);
-        applicationEventPublisher.publishEvent(new SessionStartedEvent(session.getId()));
+        applicationEventPublisher.publishEvent(new SessionStartedEvent(session.getId(), session.getExecutionNumber()));
         return DisplayExtractionSessionDto.from(session);
     }
 

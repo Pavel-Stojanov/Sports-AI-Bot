@@ -17,8 +17,8 @@ const SessionsProvider = ({ children }: { children: React.ReactNode }) => {
   const [sessions, setSessions] = useState<SessionResponse[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
-  const fetch = useCallback(async () => {
-    setLoading(true);
+  const fetch = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
 
     try {
       const response = await sessionApi.findAll();
@@ -26,7 +26,7 @@ const SessionsProvider = ({ children }: { children: React.ReactNode }) => {
     } catch (err) {
       showSnackbar(extractErrorMessage(err, 'Failed to load sessions.'), 'error');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [showSnackbar]);
 
@@ -34,8 +34,10 @@ const SessionsProvider = ({ children }: { children: React.ReactNode }) => {
     try {
       await sessionApi.add(data);
       await fetch();
+      return true;
     } catch (err) {
       showSnackbar(extractErrorMessage(err, 'Failed to create session.'), 'error');
+      return false;
     }
   }, [fetch, showSnackbar]);
 
@@ -60,6 +62,12 @@ const SessionsProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     void fetch();
   }, [fetch]);
+
+  useEffect(() => {
+    if (!sessions.some((session) => session.status === 'RUNNING')) return;
+    const timer = setInterval(() => void fetch(true), 3000);
+    return () => clearInterval(timer);
+  }, [sessions, fetch]);
 
   const value = useMemo(
     () => ({ sessions, loading, onCreate, onStart, onStop }),

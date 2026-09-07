@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router';
 import type { PostResponse } from '../../../../api/types/post.ts';
 import postApi from '../../../../api/postApi.ts';
+import extractErrorMessage from '../../../../api/extractErrorMessage.ts';
 import useSnackbar from '../../../../hooks/useSnackbar.ts';
 
 const PostDetailsPage = () => {
@@ -18,7 +19,7 @@ const PostDetailsPage = () => {
         const response = await postApi.findById(id!);
         setPost(response.data);
       } catch (err) {
-        showSnackbar(err instanceof Error ? err.message : 'Failed to load post.', 'error');
+        showSnackbar(extractErrorMessage(err, 'Failed to load post.'), 'error');
       } finally {
         setLoading(false);
       }
@@ -45,15 +46,19 @@ const PostDetailsPage = () => {
         <Chip
           size='small'
           color={post.macedonianConfidence !== null && post.macedonianConfidence >= 0.8 ? 'success' : 'default'}
-          label={`MK confidence: ${post.macedonianConfidence !== null ? (post.macedonianConfidence * 100).toFixed(0) : '?'}%`}
+          label={`MK score: ${post.macedonianConfidence !== null ? post.macedonianConfidence.toFixed(2) : '?'}`}
         />
         {post.donationBatchId !== null && (
-          <Chip size='small' color='info' label={`Donated in batch #${post.donationBatchId}`}/>
+          <Chip size='small' color='info' label={`Assigned to batch #${post.donationBatchId}`}/>
         )}
+        {post.donationStatus && <Chip size='small'
+          color={post.donationStatus === 'ACCEPTED' ? 'success' : 'error'} label={post.donationStatus}/>}
       </Stack>
+      {post.rejectionReason && <Typography color='error' sx={{ mb: 2 }}>Vezilka rejected this post: {post.rejectionReason}</Typography>}
+      {post.vezilkaId && <Typography variant='body2' sx={{ mb: 2 }}>Vezilka ID: {post.vezilkaId}</Typography>}
       {post.summary && (
         <Paper variant='outlined' sx={{ p: 2, mb: 2 }}>
-          <Typography variant='subtitle2'>Summary</Typography>
+          <Typography variant='subtitle2'>AI-generated summary</Typography>
           <Typography variant='body1' sx={{ fontStyle: 'italic' }}>{post.summary}</Typography>
         </Paper>
       )}

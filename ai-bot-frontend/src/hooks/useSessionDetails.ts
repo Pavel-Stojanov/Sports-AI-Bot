@@ -41,7 +41,7 @@ const useSessionDetails = (id: string) => {
     return () => clearInterval(timer);
   }, [session?.status, fetch]);
 
-  return { session, logs, loading };
+  return { session, logs, loading, refresh: fetch };
 };
 
 export default useSessionDetails;

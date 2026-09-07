@@ -29,7 +29,7 @@ const SessionLogViewer = ({ logs }: SessionLogViewerProps) => {
             <TableRow key={log.id}>
               <TableCell>{index + 1}</TableCell>
               <TableCell><Chip size='small' label={log.actionType}/></TableCell>
-              <TableCell sx={{ maxWidth: 420, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <TableCell sx={{ maxWidth: 420, overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
                 {log.details}
               </TableCell>
               <TableCell>

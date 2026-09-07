@@ -45,11 +45,11 @@ const HomePage = () => {
     <Box sx={{ m: 0, p: 0 }}>
       <Container maxWidth='xl' sx={{ mt: 3, py: 3 }}>
         <Typography variant='h4' gutterBottom>
-          Sports AI Bot for doniraj.vezilka.ai 🤖⚽
+          Sports AI Bot for doniraj.vezilka.ai
         </Typography>
         <Typography variant='body1' sx={{ mb: 4 }}>
           This bot navigates gol.mk, extracts Macedonian sports results and match
-          reports, summarizes them, and donates the summaries to the Vezilka
+          reports, summarizes them for browsing, and donates the article text to the Vezilka
           language-preservation platform. Use the Sessions page to run the bot,
           the Posts page to browse what it collected, and the Donations page to
           review and submit batches.
@@ -58,8 +58,8 @@ const HomePage = () => {
           <Grid container spacing={2}>
             {[
               { label: 'Extracted posts', value: stats.totalPosts },
-              { label: 'Macedonian (≥80%)', value: stats.highConfidencePosts },
-              { label: 'Donated posts', value: stats.donatedPosts },
+              { label: 'Language score ≥0.8', value: stats.highConfidencePosts },
+              { label: 'Posts assigned to batches', value: stats.donatedPosts },
               { label: 'Latest session', value: stats.latestSessionStatus ?? '—' }
             ].map((item) => (
               <Grid key={item.label} size={{ xs: 12, sm: 6, md: 3 }}>

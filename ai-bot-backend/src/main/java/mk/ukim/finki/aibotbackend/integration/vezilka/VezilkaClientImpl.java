@@ -1,5 +1,11 @@
 package mk.ukim.finki.aibotbackend.integration.vezilka;
 
+import java.time.Instant;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
+
 import java.util.List;
 import mk.ukim.finki.aibotbackend.model.enums.DonationStatus;
 import mk.ukim.finki.aibotbackend.model.exception.VezilkaIntegrationException;
@@ -19,7 +25,7 @@ import org.springframework.web.client.RestClientException;
  * for a bot, and the media endpoints reject anything else.</p>
  */
 @Component
-public class VezilkaClientImpl implements VezilkaClient {
+public class VezilkaClientImpl implements BatchVezilkaClient {
     private static final String TEXT_DONATIONS_PATH = "/api/public/v1/donations/text/";
     private static final String DONATION_PATH = "/api/public/v1/donations/{id}/";
     private static final String API_KEY_HEADER = "X-Donation-Api-Key";
@@ -27,7 +33,12 @@ public class VezilkaClientImpl implements VezilkaClient {
     private final RestClient restClient;
 
     public VezilkaClientImpl(VezilkaProperties vezilkaProperties) {
+        SimpleClientHttpRequestFactory requestFactory =
+            new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(10_000);
+        requestFactory.setReadTimeout(60000);
         this.restClient = RestClient.builder()
+            .requestFactory(requestFactory)
             .baseUrl(vezilkaProperties.baseUrl())
             .defaultHeader(API_KEY_HEADER, vezilkaProperties.apiKey())
             .build();
@@ -53,14 +64,16 @@ public class VezilkaClientImpl implements VezilkaClient {
         try {
             // Both 201 (something was accepted) and 200 (everything was rejected)
             // are valid answers; the verdict is read per item from the body.
-            return restClient.post()
+            DonationResponse response = restClient.post()
                 .uri(TEXT_DONATIONS_PATH)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(new TextDonationEnvelope(items))
                 .retrieve()
                 .body(DonationResponse.class);
+            validateResponse(response, items.size());
+            return response;
         } catch (HttpStatusCodeException exception) {
-            throw new VezilkaIntegrationException(describe(exception), exception);
+            throw new VezilkaIntegrationException(describe(exception), exception, retryAt(exception));
         } catch (RestClientException exception) {
             throw new VezilkaIntegrationException(
                 "Donating %d items to Vezilka failed: %s"
@@ -75,6 +88,9 @@ public class VezilkaClientImpl implements VezilkaClient {
                 .uri(DONATION_PATH, vezilkaReference)
                 .retrieve()
                 .body(DonationItemResult.class);
+            if (donation == null || donation.status() == null) {
+                throw new VezilkaIntegrationException("Vezilka returned an empty or invalid donation status.");
+            }
             return donation.isAccepted() ? DonationStatus.ACCEPTED : DonationStatus.REJECTED;
         } catch (HttpStatusCodeException exception) {
             throw new VezilkaIntegrationException(
@@ -85,6 +101,33 @@ public class VezilkaClientImpl implements VezilkaClient {
                 "Reading donation '%s' back from Vezilka failed: %s"
                     .formatted(vezilkaReference, exception.getMessage()), exception);
         }
+    }
+
+    private void validateResponse(DonationResponse response, int expected) {
+        if (response == null || response.results() == null || response.results().size() != expected
+            || response.results().stream().anyMatch(item -> item == null
+                || !("accepted".equals(item.status()) || "rejected".equals(item.status()))
+                || (item.isAccepted() && (item.id() == null || item.id().isBlank())))) {
+            throw new VezilkaIntegrationException("Vezilka returned an incomplete or invalid donation response.");
+        }
+    }
+
+    private Instant retryAt(HttpStatusCodeException exception) {
+        String value = exception.getResponseHeaders() == null ? null
+            : exception.getResponseHeaders().getFirst("Retry-After");
+        if (value != null) {
+            try {
+                return Instant.now().plusSeconds(Math.max(0, Long.parseLong(value.trim())));
+            } catch (NumberFormatException ignored) {
+                try {
+                    return ZonedDateTime.parse(value,
+                        DateTimeFormatter.RFC_1123_DATE_TIME).toInstant();
+                } catch (DateTimeParseException invalidDate) {
+                    // Use the default retry delay when the header is invalid.
+                }
+            }
+        }
+        return Instant.now().plusSeconds(60);
     }
 
     private String describe(HttpStatusCodeException exception) {

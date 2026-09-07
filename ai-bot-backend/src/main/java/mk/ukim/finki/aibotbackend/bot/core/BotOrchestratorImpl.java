@@ -8,6 +8,10 @@ import mk.ukim.finki.aibotbackend.model.domain.ExtractionSession;
 import mk.ukim.finki.aibotbackend.model.domain.ExtractionTarget;
 import mk.ukim.finki.aibotbackend.model.dto.CreateExtractedPostDto;
 import mk.ukim.finki.aibotbackend.model.exception.SessionNotFoundException;
+import mk.ukim.finki.aibotbackend.model.exception.BotExecutionException;
+import mk.ukim.finki.aibotbackend.model.enums.SessionStatus;
+import mk.ukim.finki.aibotbackend.model.enums.BotActionType;
+import mk.ukim.finki.aibotbackend.bot.llm.BotAction;
 import mk.ukim.finki.aibotbackend.service.domain.BotActionLogService;
 import mk.ukim.finki.aibotbackend.service.domain.ExtractedPostService;
 import mk.ukim.finki.aibotbackend.service.domain.ExtractionSessionService;
@@ -38,7 +42,7 @@ public class BotOrchestratorImpl implements BotOrchestrator {
     }
 
     @Override
-    public void runSession(Long sessionId) {
+    public synchronized void runSession(Long sessionId, long executionNumber) {
         // Runs on the async bot thread: load the session and materialize its
         // LAZY targets inside a short transaction so the rest of the (long)
         // run can work on a detached entity without a LazyInitializationException
@@ -51,27 +55,60 @@ public class BotOrchestratorImpl implements BotOrchestrator {
             return loaded;
         });
 
+        if (session.getStatus() != SessionStatus.RUNNING || session.getExecutionNumber() != executionNumber) {
+            return;
+        }
         try {
+            requireRunning(sessionId, executionNumber);
             socialNetworkBot.login();
             // The LLM sometimes EXTRACTs the same page more than once despite the
             // prompt rules, so posts are deduplicated by externalId across the run.
-            Set<String> seenExternalIds = new HashSet<>();
+            Set<String> seenExternalIds = new HashSet<>(
+                extractedPostService.findExternalIdsBySessionId(sessionId));
+            int postCount = seenExternalIds.size();
             for (ExtractionTarget target : session.getTargets()) {
+                requireRunning(sessionId, executionNumber);
                 List<CreateExtractedPostDto> extracted = socialNetworkBot.execute(
                     target,
-                    (action, successful) -> botActionLogService.log(session, action, successful));
+                    (action, successful) -> {
+                        botActionLogService.log(session, action, successful);
+                        requireRunning(sessionId, executionNumber);
+                        if (!successful && action.type() == BotActionType.EXTRACT) {
+                            throw new BotExecutionException("Article extraction failed. See the backend log for details.");
+                        }
+                    });
+                requireRunning(sessionId, executionNumber);
+                postCount += extracted.size();
                 extractedPostService.saveAll(
                     extracted.stream()
                         .filter(dto -> dto.externalId() == null || seenExternalIds.add(dto.externalId()))
                         .map(dto -> dto.toExtractedPost(session))
                         .toList());
             }
-            extractionSessionService.complete(sessionId);
+            if (postCount == 0) {
+                throw new BotExecutionException("No articles were extracted. Check the target and bot trace.");
+            }
+            extractionSessionService.finishExecution(sessionId, executionNumber, true);
+        } catch (SessionPausedException exception) {
+            log.info("Extraction session {} execution {} stopped.", sessionId, executionNumber);
         } catch (RuntimeException exception) {
             log.error("Extraction session {} failed.", sessionId, exception);
-            extractionSessionService.fail(sessionId);
+            botActionLogService.log(session, new BotAction(BotActionType.FINISH, null, null,
+                "Session failed: " + exception.getMessage()), false);
+            extractionSessionService.finishExecution(sessionId, executionNumber, false);
         } finally {
             socialNetworkBot.shutdown();
         }
     }
+    private void requireRunning(Long sessionId, long executionNumber) {
+        ExtractionSession current = extractionSessionService.findById(sessionId)
+            .orElseThrow(() -> new SessionNotFoundException(sessionId));
+        if (current.getStatus() != SessionStatus.RUNNING || current.getExecutionNumber() != executionNumber) {
+            throw new SessionPausedException();
+        }
+    }
+
+    private static class SessionPausedException extends RuntimeException {
+    }
+
 }

@@ -5,5 +5,5 @@ package mk.ukim.finki.aibotbackend.events;
  * Handled asynchronously by {@code SessionStartedListener}, which kicks
  * off the bot run outside of the web request.
  */
-public record SessionStartedEvent(Long sessionId) {
+public record SessionStartedEvent(Long sessionId, long executionNumber) {
 }

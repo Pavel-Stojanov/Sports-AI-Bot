@@ -17,4 +17,8 @@ export interface DonationBatchResponse {
   submittedAt: string | null;
   createdAt: string;
   postIds: number[];
+  acceptedCount: number;
+  rejectedCount: number;
+  pendingCount: number;
+  nextRetryAt: string | null;
 }

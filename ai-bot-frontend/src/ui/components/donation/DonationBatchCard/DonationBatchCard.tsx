@@ -5,6 +5,7 @@ import type { DonationBatchResponse, DonationStatus } from '../../../../api/type
 
 interface DonationBatchCardProps {
   batch: DonationBatchResponse;
+  busy: boolean;
   onApprove: (id: number) => void;
   onSubmit: (id: number) => void;
 }
@@ -18,7 +19,7 @@ const STATUS_COLOR: Record<DonationStatus, 'default' | 'info' | 'warning' | 'suc
   FAILED: 'error'
 };
 
-const DonationBatchCard = ({ batch, onApprove, onSubmit }: DonationBatchCardProps) => {
+const DonationBatchCard = ({ batch, onApprove, onSubmit, busy }: DonationBatchCardProps) => {
   return (
     <Card>
       <CardContent>
@@ -27,6 +28,15 @@ const DonationBatchCard = ({ batch, onApprove, onSubmit }: DonationBatchCardProp
           <Chip size='small' color={STATUS_COLOR[batch.status]} label={batch.status}/>
           <Chip size='small' variant='outlined' label={`${batch.postIds.length} post(s)`}/>
         </Stack>
+        <Typography variant='body2'>
+          {batch.acceptedCount} accepted, {batch.rejectedCount} rejected, {batch.pendingCount} pending
+        </Typography>
+        {batch.nextRetryAt && (
+          <Typography variant='body2'>Retry after {new Date(batch.nextRetryAt).toLocaleString()}</Typography>
+        )}
+        {batch.status === 'SUBMITTED' && (
+          <Typography variant='body2'>Unsent posts will retry automatically after the delay.</Typography>
+        )}
         {batch.vezilkaReference && (
           <Typography variant='body2'>Vezilka reference: {batch.vezilkaReference}</Typography>
         )}
@@ -38,17 +48,17 @@ const DonationBatchCard = ({ batch, onApprove, onSubmit }: DonationBatchCardProp
       <CardActions>
         <Button
           startIcon={<ThumbUpIcon/>}
-          disabled={batch.status !== 'DRAFT'}
+          disabled={busy || batch.status !== 'DRAFT'}
           onClick={() => onApprove(batch.id)}
         >
           Approve
         </Button>
         <Button
           startIcon={<SendIcon/>}
-          disabled={batch.status !== 'APPROVED'}
+          disabled={busy || (batch.status !== 'APPROVED' && batch.status !== 'SUBMITTED')}
           onClick={() => onSubmit(batch.id)}
         >
-          Submit to Vezilka
+          {batch.status === 'SUBMITTED' ? 'Retry pending posts' : 'Submit to Vezilka'}
         </Button>
       </CardActions>
     </Card>

@@ -36,4 +36,6 @@ public interface ExtractionSessionService {
      * Transitions a session to FAILED and stamps {@code finishedAt}.
      */
     ExtractionSession fail(Long id);
+
+    void finishExecution(Long id, long executionNumber, boolean successful);
 }

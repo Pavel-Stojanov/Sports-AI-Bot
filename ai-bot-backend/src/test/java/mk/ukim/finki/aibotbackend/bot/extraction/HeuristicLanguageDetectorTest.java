@@ -8,6 +8,24 @@ public class HeuristicLanguageDetectorTest {
     private final HeuristicLanguageDetector detector = new HeuristicLanguageDetector();
 
     @Test
+    void macedonianWithoutDistinctiveLettersStillHasLanguageEvidence() {
+        assertThat(detector.macedonianConfidence(
+            "Вардар победи со два гола во натпреварот и се пласира на првото место."))
+            .isGreaterThanOrEqualTo(0.8);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+        "Российская команда выиграла матч и вышла в финал чемпионата.",
+        "Отборът спечели мача и ще играе във финала на първенството.",
+        "Тим је победио у финалу и освојио титулу.",
+        "Спорт футбол тенис баскетбол"
+    })
+    void cyrillicAloneIsNotEnoughForDonation(String text) {
+        assertThat(detector.macedonianConfidence(text)).isLessThan(0.6);
+    }
+
+    @Test
     void macedonianTextScoresHigh() {
         double score = detector.macedonianConfidence(
             "Македонија победи со два гола и ќе игра во финалето на квалификациите.");

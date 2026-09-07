@@ -1,5 +1,7 @@
 package mk.ukim.finki.aibotbackend.model.domain;
 
+import java.time.Instant;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -33,6 +35,8 @@ public class DonationBatch extends BaseAuditableEntity {
     private String vezilkaReference;
 
     private LocalDateTime submittedAt;
+
+    private Instant nextRetryAt;
 
     @OneToMany(mappedBy = "donationBatch")
     private List<ExtractedPost> posts = new ArrayList<>();

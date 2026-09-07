@@ -4,7 +4,7 @@ import type { CreateSessionRequest, SessionResponse } from '../api/types/session
 export interface SessionsContextType {
   sessions: SessionResponse[];
   loading: boolean;
-  onCreate: (data: CreateSessionRequest) => Promise<void>;
+  onCreate: (data: CreateSessionRequest) => Promise<boolean>;
   onStart: (id: number) => Promise<void>;
   onStop: (id: number) => Promise<void>;
 }

@@ -7,44 +7,63 @@ space, and **donates it to [doniraj.vezilka.ai](https://doniraj.vezilka.ai)** �
 the platform for preserving the Macedonian language.
 
 Секој студент добива **една** социјална мрежа (доделена од професорот) и го
-имплементира ботот за неа, следејќи ја оваа заедничка архитектура. Шаблонот се
-компајлира и се стартува веднаш — вашата задача е да ги имплементирате местата
-означени со `TODO(student)`.
+имплементира ботот за неа, следејќи ја оваа заедничка архитектура. Оригиналниот шаблон ги означува задачите со `TODO(student)`.
+Имплементацијата за gol.mk е опишана подолу.
 
 ## This implementation: gol.mk sports bot
 
-This repository is the **sports variant** of the assignment. The assigned
-source is [gol.mk](https://www.gol.mk/), a Macedonian sports portal, modelled
-as `SocialNetwork.SPORTS_PORTAL_GOL`. What runs when you start a session:
+The assigned source is gol.mk, represented by `SocialNetwork.SPORTS_PORTAL_GOL`.
+The bot extracts public sports articles and keeps their source URLs. It generates
+summaries for browsing, but donates the extracted article text.
 
-- `PlaywrightBrowserAgent` drives Chromium through Playwright and turns each page into
-  a text snapshot: page text with every link annotated by its URL and every
-  image by its source, capped at 10,000 characters.
-- `OpenAiCompatibleLlmClient` sends the snapshot and the goal to any
-  OpenAI-compatible chat endpoint and parses the JSON `BotDecision`. Developed
-  against OpenRouter with `meta-llama/llama-3.3-70b-instruct`.
-- `GolMkBot` builds the goal per target: `FEED_URL` extracts the articles
-  linked from a URL, `HASHTAG` is a section name such as `кошарка` or `тенис`,
-  `KEYWORD` searches for articles about a term, `PROFILE` is a team or
-  competition. gol.mk needs no login, so `login()` only opens the homepage.
-- `GolMkContentExtractor` extracts full articles (not scoreboard listings),
-  asks the LLM for a two-to-three-sentence Macedonian summary, and attaches article
-  images as `MediaItem`s. `HeuristicLanguageDetector` scores the text by its
-  Cyrillic ratio, boosted by the letters ѓ, ќ, ѕ and penalized by Serbian-only
-  letters.
-- `VezilkaClientImpl` donates through the Vezilka Public Donation API v1
-  (`POST /api/public/v1/donations/text/`, `X-Donation-Api-Key` header), one
-  item per post with its own `source_url`. Vezilka moderates synchronously, so
-  a submitted batch is settled to ACCEPTED or REJECTED immediately and every
-  post stores its Vezilka id and rejection reason (migration `V7`). The
-  scheduler path only settles batches that were cut short by the API's rate
-  limit. Images are shown in the UI but deliberately not donated: the corpus is
-  about language, and sports photos carry none.
+- `PlaywrightBrowserAgent` drives Chromium and produces link-annotated snapshots,
+  limited to 10,000 characters per page.
+- `OpenAiCompatibleLlmClient` sends the page, goal and recent action history to the
+  configured chat endpoint. It validates decisions and attempts one repair of
+  malformed JSON before failing the session.
+- `GolMkBot` supports feed URLs, section names, keywords and teams or competitions.
+  gol.mk needs no login. Listing and scoreboard pages supply links to articles.
+- `GolMkContentExtractor` extracts article text, source URLs and images, plus an
+  AI-generated summary. The language detector scores Cyrillic text and common
+  words. This score is a heuristic, not a calibrated probability.
+- The orchestrator saves posts and action logs through domain services. Browser
+  runs execute one at a time. Each start has an execution number, so an older run
+  cannot complete or fail a resumed session.
+- `VezilkaClientImpl` sends text through the Public Donation API with
+  `X-Donation-Api-Key`. `BatchVezilkaClient` extends the original `VezilkaClient`
+  interface without modifying the template contract.
 
-Schema additions are `V6` (post summary) and `V7` (Vezilka verdict per post).
-The shared abstractions and the agentic loop are unchanged; `VezilkaClient`
-keeps every template method and gains `submitTextDonations(List)` beside them,
-because the real API is batch-oriented.
+Text donations are the scope of this implementation. Article images remain
+available in the UI. The supplied API document also describes media endpoints
+with different authentication restrictions; this bot does not submit media.
+
+Migrations V6 and V7 add summaries and Vezilka results. V8 adds execution numbers,
+explicit post verdicts and retry timestamps. It also reopens old terminal batches
+that still contain unsent posts. V1 through V5 are unchanged.
+
+### Session and donation behavior
+
+Stop takes effect at the next action boundary, after an in-flight browser or LLM
+call returns. Resume starts navigation again. Posts saved by completed targets
+remain in the database and are deduplicated within that session. A target that
+was interrupted before its posts were saved must be extracted again.
+
+Vezilka returns final per-item verdicts synchronously. HTTP 200 can mean every
+item was rejected. Rejected items are not retried, even when the response has no
+ID. Unsent items in a partial batch retain their pending status and retry after
+the API's `Retry-After` delay. The scheduler checks once a minute. If the first
+request fails before any verdict arrives, the batch remains APPROVED for manual
+retry after the delay.
+
+The batch status ACCEPTED means at least one post was accepted and none remain
+pending. A batch can contain both accepted and rejected posts; the UI shows
+separate counts and per-post rejection reasons. Assignment to a draft batch is
+not acceptance. The API's existing `donated` filter refers to batch assignment,
+which the UI labels as Assigned or Unassigned.
+
+Batch creation requires unassigned posts, a source URL, 20 to 100,000 characters
+of text, and a language score of at least 0.6. Vezilka makes the final language
+decision. Posts already assigned to a batch cannot be moved or deleted.
 
 ### Configuration
 
@@ -57,8 +76,8 @@ The backend reads secrets from `ai-bot-backend/.env` (git-ignored). Copy
 | `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY` | OpenAI-compatible chat endpoint the bot decides with |
 | `VEZILKA_API_KEY` | Vezilka Public Donation API key, issued by the course |
 
-Playwright downloads its browser on first run. A session against gol.mk with a
-few targets takes a couple of minutes and costs a few cents of LLM usage.
+Playwright downloads its browser on first run. Live runs depend on the source site and the configured LLM. They may take several
+minutes, and the provider may charge for requests.
 
 ## Architecture
 
@@ -113,7 +132,11 @@ You implement the **seams**, not the loop.
 
 ## Getting started
 
-Prerequisites: Java 21, Node 20+, Docker.
+Prerequisites: Java 21, Node 20.19+ or 22.12+, and Docker.
+
+Check `java -version` before running Maven. On macOS, select Java 21 with
+`export JAVA_HOME=$(/usr/libexec/java_home -v 21)`. The current project does not
+compile with the default Java 25 installation used during the readiness review.
 
 ```bash
 # 1. Database
@@ -126,22 +149,65 @@ cp .env.example .env   # then fill in the keys, see Configuration above
 
 # 3. Frontend (http://localhost:3000)
 cd ../ai-bot-frontend
-npm install
+npm ci
 npm run dev
 ```
 
-Register and log in — auth is fully working. Every endpoint of the bot domain
-returns **HTTP 501 Not Implemented** with the name of the `TODO(student)`
-method that is missing; as you implement them, the 501s disappear one by one.
+Register and log in, create a session, then open its details and press Start.
+The details page shows the live trace and has Stop and Resume controls.
 
-Tests: `./mvnw test` (Docker must be running — Testcontainers starts a real
-PostgreSQL). `UserRepositoryTest` is a working example of the expected test
-pattern; the `@Disabled` skeletons are yours to implement.
+Run the checks from their respective directories:
 
-## What you implement — `TODO(student)` milestones
+```bash
+# ai-bot-backend, with Java 21 and Docker running
+./mvnw test
 
-Search the codebase for `TODO(student)` — every marker is part of the
-assignment. Grouped by milestone:
+# ai-bot-frontend
+npm run build
+npm run lint
+```
+
+The backend tests use disposable PostgreSQL containers and a test-only JWT key.
+They do not need `.env` or production API credentials. Browser tests launch real
+Chromium against local fixtures. HTTP integration tests exercise the Vezilka
+client against a local test server, without donating to the public corpus.
+
+The test suite covers pause/resume generations, serialized session execution,
+partial donation retries, final rejections without IDs, retry delays across a
+committed transaction, and migration of legacy partial batches.
+
+See [the demo walkthrough](docs/demo.md) for a presentation without slides.
+
+## Milestone evidence
+
+| Milestone | Implementation and verification |
+|-----------|---------------------------------|
+| 1. Browser | `PlaywrightBrowserAgent`, real Chromium fixture tests |
+| 2. LLM | `OpenAiCompatibleLlmClient`, JSON validation and repair tests |
+| 3. Network bot | `GolMkBot`, goals for all four target types |
+| 4. Extraction and language | `GolMkContentExtractor`, language examples including nearby languages |
+| 5. Orchestration | `BotOrchestratorImpl`, persistence, pause/resume and queued-run integration tests |
+| 6. Services | Domain/application services, paged filtering and batch state validation |
+| 7. Vezilka | `BatchVezilkaClient`, HTTP contract tests, per-item verdicts and pending-item recovery |
+| 8. Frontend | Session controls and trace, post filters, paginated selection, donation outcomes |
+| 9. Tests | Active repository, integration and unit tests under `src/test/java` |
+
+## Known limits
+
+The LLM can choose an unhelpful link or extract incomplete text. Snapshots can
+truncate long pages, and generated summaries can be wrong. Review the article
+and its source before donating. Empty sessions and unrecoverable extraction or
+decision errors are reported as FAILED.
+
+The language heuristic can misclassify short or mixed-language text. Existing
+post scores are not recalculated by V8. The bot does not restore browser state
+after a server restart. A session left RUNNING can be stopped and resumed through
+the UI. Run a single backend instance; this is not a distributed job queue.
+
+## Original assignment milestones
+
+The original rubric is preserved below. Remaining `TODO(student)` comments in
+protected interfaces describe the extension points, not missing implementations.
 
 | # | Milestone | Where |
 |---|-----------|-------|

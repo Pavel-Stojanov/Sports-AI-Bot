@@ -22,6 +22,9 @@ export interface PostResponse {
   macedonianConfidence: number | null;
   mediaItems: MediaItemResponse[];
   donationBatchId: number | null;
+  donationStatus: 'ACCEPTED' | 'REJECTED' | null;
+  vezilkaId: string | null;
+  rejectionReason: string | null;
 }
 
 /**

@@ -11,6 +11,33 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 public class OpenAiCompatibleLlmClientTest {
 
     @Test
+    void malformedResponsesFailTheRunAfterOneRepairAttempt() {
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(
+            new LlmProperties("http://127.0.0.1", "test", "test")) {
+            @Override
+            public String complete(String systemPrompt, String userPrompt) {
+                calls.incrementAndGet();
+                return "{}";
+            }
+        };
+        assertThatThrownBy(() -> client.decideNextAction(
+            new mk.ukim.finki.aibotbackend.bot.browser.PageSnapshot("https://www.gol.mk/", "Sports", "text", null),
+            "Extract articles", List.of()))
+            .isInstanceOf(mk.ukim.finki.aibotbackend.model.exception.BotExecutionException.class);
+        assertThat(calls).hasValue(2);
+    }
+
+    @Test
+    void rejectsMissingDecisionFields() {
+        assertThatThrownBy(() -> OpenAiCompatibleLlmClient.parseDecision("{}"))
+            .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> OpenAiCompatibleLlmClient.parseDecision(
+            "{\"action\": {\"type\": \"NAVIGATE\"}, \"goalReached\": false}"))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void parsesAPlainJsonDecision() throws Exception {
         BotDecision decision = OpenAiCompatibleLlmClient.parseDecision("""
             {"action": {"type": "NAVIGATE", "target": "https://www.gol.mk/rezultati",

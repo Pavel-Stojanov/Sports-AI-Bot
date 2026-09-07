@@ -1,5 +1,7 @@
 package mk.ukim.finki.aibotbackend.bot.llm;
 
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
+
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -77,7 +79,12 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
 
     public OpenAiCompatibleLlmClient(LlmProperties llmProperties) {
         this.llmProperties = llmProperties;
+        SimpleClientHttpRequestFactory requestFactory =
+            new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(10_000);
+        requestFactory.setReadTimeout(60000);
         this.restClient = RestClient.builder()
+            .requestFactory(requestFactory)
             .baseUrl(llmProperties.baseUrl())
             .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + llmProperties.apiKey())
             .build();
@@ -176,12 +183,7 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
             try {
                 return guardFirstDecision(parseDecision(retryRaw), history);
             } catch (JsonProcessingException | IllegalArgumentException secondError) {
-                log.error("LLM decision unparseable twice, finishing target: {}", secondError.getMessage());
-                return new BotDecision(
-                    new BotAction(BotActionType.FINISH, null, null,
-                        "LLM output was not parseable twice in a row"),
-                    true,
-                    "Safe FINISH fallback after two malformed LLM responses.");
+                throw new BotExecutionException("LLM returned an invalid decision twice.", secondError);
             }
         }
     }
@@ -203,9 +205,21 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
 
     static BotDecision parseDecision(String raw) throws JsonProcessingException {
         JsonNode root = MAPPER.readTree(stripFences(raw));
+        if (root == null || !root.isObject() || !root.path("action").isObject()
+            || !root.path("action").path("type").isTextual() || !root.path("goalReached").isBoolean()) {
+            throw new IllegalArgumentException("Decision requires action.type and a boolean goalReached.");
+        }
         JsonNode action = root.path("action");
+        BotActionType type = BotActionType.valueOf(action.path("type").asText());
+        if ((type == BotActionType.NAVIGATE || type == BotActionType.CLICK || type == BotActionType.TYPE)
+            && (!action.path("target").isTextual() || action.path("target").asText().isBlank())) {
+            throw new IllegalArgumentException(type + " requires a target.");
+        }
+        if (type == BotActionType.TYPE && !action.path("value").isTextual()) {
+            throw new IllegalArgumentException("TYPE requires a text value.");
+        }
         BotAction botAction = new BotAction(
-            BotActionType.valueOf(action.path("type").asText("FINISH")),
+            type,
             action.hasNonNull("target") ? action.get("target").asText() : null,
             action.hasNonNull("value") ? action.get("value").asText() : null,
             action.path("reasoning").asText("")

@@ -10,5 +10,5 @@ public interface BotOrchestrator {
      * the agentic loop per target, persists the extracted posts and the action
      * logs, and finally marks the session COMPLETED or FAILED.
      */
-    void runSession(Long sessionId);
+    void runSession(Long sessionId, long executionNumber);
 }
