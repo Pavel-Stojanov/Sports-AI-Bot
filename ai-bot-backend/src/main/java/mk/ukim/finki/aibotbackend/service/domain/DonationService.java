@@ -39,8 +39,9 @@ public interface DonationService {
     DonationBatch submit(Long id);
 
     /**
-     * Settles every batch still left in SUBMITTED by reading its donated posts
-     * back from Vezilka and confirming their recorded verdicts. Called
+     * Resends the unsent posts of every batch still left in SUBMITTED once its
+     * retry delay has passed. Each batch commits in its own transaction, so a
+     * failure in one batch cannot undo verdicts stored for another. Called
      * periodically by the {@code DonationStatusScheduler}.
      */
     void refreshSubmittedStatuses();

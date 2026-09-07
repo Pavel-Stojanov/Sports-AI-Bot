@@ -1,12 +1,14 @@
 package mk.ukim.finki.aibotbackend.jobs;
 
-import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import mk.ukim.finki.aibotbackend.service.domain.DonationService;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-/** Retries pending items after their API retry delay. Existing verdicts are final. */
+/**
+ * Retries pending items after their API retry delay. Existing verdicts are final.
+ * Runs without a transaction so that every batch commits on its own.
+ */
 @Component
 @Slf4j
 public class DonationStatusScheduler {
@@ -17,7 +19,6 @@ public class DonationStatusScheduler {
     }
 
     @Scheduled(fixedDelayString = "${vezilka.retry-check-interval-ms:60000}")
-    @Transactional
     public void refreshSubmittedDonationStatuses() {
         log.info("Refreshing statuses of submitted donation batches...");
         donationService.refreshSubmittedStatuses();

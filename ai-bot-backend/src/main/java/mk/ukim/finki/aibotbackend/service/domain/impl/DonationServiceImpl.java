@@ -22,7 +22,9 @@ import mk.ukim.finki.aibotbackend.repository.DonationBatchRepository;
 import mk.ukim.finki.aibotbackend.service.domain.DonationService;
 import mk.ukim.finki.aibotbackend.service.domain.ExtractedPostService;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 @Slf4j
@@ -30,12 +32,15 @@ public class DonationServiceImpl implements DonationService {
     private final DonationBatchRepository donationBatchRepository;
     private final ExtractedPostService extractedPostService;
     private final BatchVezilkaClient vezilkaClient;
+    private final TransactionTemplate retryTransaction;
 
     public DonationServiceImpl(DonationBatchRepository donationBatchRepository,
-                               ExtractedPostService extractedPostService, BatchVezilkaClient vezilkaClient) {
+                               ExtractedPostService extractedPostService, BatchVezilkaClient vezilkaClient,
+                               PlatformTransactionManager transactionManager) {
         this.donationBatchRepository = donationBatchRepository;
         this.extractedPostService = extractedPostService;
         this.vezilkaClient = vezilkaClient;
+        this.retryTransaction = new TransactionTemplate(transactionManager);
     }
 
     @Override
@@ -105,21 +110,31 @@ public class DonationServiceImpl implements DonationService {
     }
 
     @Override
-    @Transactional
     public void refreshSubmittedStatuses() {
         for (Long candidateId : donationBatchRepository.findIdsByStatus(DonationStatus.SUBMITTED)) {
-            DonationBatch batch = getForUpdate(candidateId);
-            if (batch.getStatus() != DonationStatus.SUBMITTED
-                || (batch.getNextRetryAt() != null && Instant.now().isBefore(batch.getNextRetryAt()))) {
-                continue;
-            }
             try {
-                // The POST verdict is final. Retry missing items, never rejected or accepted items.
-                submitPending(batch);
+                // Each batch commits on its own. Verdicts already stored for one batch
+                // must survive a failure while storing another batch's verdicts.
+                retryTransaction.executeWithoutResult(status -> retryBatch(candidateId));
             } catch (RuntimeException exception) {
                 // One broken batch must not stop the retries of the others.
-                log.warn("Donation batch {} retry failed: {}", batch.getId(), exception.getMessage());
+                log.warn("Donation batch {} retry failed: {}", candidateId, exception.getMessage());
             }
+        }
+    }
+
+    private void retryBatch(Long id) {
+        DonationBatch batch = getForUpdate(id);
+        if (batch.getStatus() != DonationStatus.SUBMITTED
+            || (batch.getNextRetryAt() != null && Instant.now().isBefore(batch.getNextRetryAt()))) {
+            return;
+        }
+        try {
+            // The POST verdict is final. Retry missing items, never rejected or accepted items.
+            submitPending(batch);
+        } catch (VezilkaIntegrationException exception) {
+            // The retry delay is already stored on the batch and must be committed.
+            log.warn("Donation batch {} retry failed: {}", id, exception.getMessage());
         }
     }
 
