@@ -17,5 +17,6 @@ public interface DonationBatchRepository extends JpaRepository<DonationBatch, Lo
     @Query("select b from DonationBatch b where b.id = :id")
     Optional<DonationBatch> findForUpdate(Long id);
 
-    List<DonationBatch> findAllByStatus(DonationStatus status);
+    @Query("select b.id from DonationBatch b where b.status = :status order by b.id")
+    List<Long> findIdsByStatus(DonationStatus status);
 }

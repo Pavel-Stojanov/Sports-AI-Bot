@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as React from 'react';
 import sessionApi from '../api/sessionApi.ts';
 import type { CreateSessionRequest, SessionResponse } from '../api/types/session.ts';
@@ -16,17 +16,20 @@ const SessionsProvider = ({ children }: { children: React.ReactNode }) => {
 
   const [sessions, setSessions] = useState<SessionResponse[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const requestNumber = useRef(0);
+  const cancelRequests = useCallback(() => { requestNumber.current++; }, []);
 
   const fetch = useCallback(async (silent = false) => {
+    const request = ++requestNumber.current;
     if (!silent) setLoading(true);
 
     try {
       const response = await sessionApi.findAll();
-      setSessions(response.data);
+      if (request === requestNumber.current) setSessions(response.data);
     } catch (err) {
-      showSnackbar(extractErrorMessage(err, 'Failed to load sessions.'), 'error');
+      if (request === requestNumber.current) showSnackbar(extractErrorMessage(err, 'Failed to load sessions.'), 'error');
     } finally {
-      if (!silent) setLoading(false);
+      if (request === requestNumber.current) setLoading(false);
     }
   }, [showSnackbar]);
 
@@ -61,7 +64,8 @@ const SessionsProvider = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     void fetch();
-  }, [fetch]);
+    return cancelRequests;
+  }, [fetch, cancelRequests]);
 
   const hasRunningSession = sessions.some((session) => session.status === 'RUNNING');
   useEffect(() => {

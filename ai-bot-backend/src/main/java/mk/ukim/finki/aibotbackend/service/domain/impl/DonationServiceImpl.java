@@ -107,8 +107,8 @@ public class DonationServiceImpl implements DonationService {
     @Override
     @Transactional
     public void refreshSubmittedStatuses() {
-        for (DonationBatch candidate : donationBatchRepository.findAllByStatus(DonationStatus.SUBMITTED)) {
-            DonationBatch batch = getForUpdate(candidate.getId());
+        for (Long candidateId : donationBatchRepository.findIdsByStatus(DonationStatus.SUBMITTED)) {
+            DonationBatch batch = getForUpdate(candidateId);
             if (batch.getStatus() != DonationStatus.SUBMITTED
                 || (batch.getNextRetryAt() != null && Instant.now().isBefore(batch.getNextRetryAt()))) {
                 continue;
