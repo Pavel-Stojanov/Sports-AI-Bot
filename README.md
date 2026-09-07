@@ -11,6 +11,55 @@ the platform for preserving the Macedonian language.
 компајлира и се стартува веднаш — вашата задача е да ги имплементирате местата
 означени со `TODO(student)`.
 
+## This implementation: gol.mk sports bot
+
+This repository is the **sports variant** of the assignment. The assigned
+source is [gol.mk](https://www.gol.mk/), a Macedonian sports portal, modelled
+as `SocialNetwork.SPORTS_PORTAL_GOL`. What runs when you start a session:
+
+- `PlaywrightBrowserAgent` drives Chromium through Playwright and turns each page into
+  a text snapshot: page text with every link annotated by its URL and every
+  image by its source, capped at 10,000 characters.
+- `OpenAiCompatibleLlmClient` sends the snapshot and the goal to any
+  OpenAI-compatible chat endpoint and parses the JSON `BotDecision`. Developed
+  against OpenRouter with `meta-llama/llama-3.3-70b-instruct`.
+- `GolMkBot` builds the goal per target: `FEED_URL` extracts the articles
+  linked from a URL, `HASHTAG` is a section name such as `кошарка` or `тенис`,
+  `KEYWORD` searches for articles about a term, `PROFILE` is a team or
+  competition. gol.mk needs no login, so `login()` only opens the homepage.
+- `GolMkContentExtractor` extracts full articles (not scoreboard listings),
+  asks the LLM for a two-to-three-sentence Macedonian summary, and attaches article
+  images as `MediaItem`s. `HeuristicLanguageDetector` scores the text by its
+  Cyrillic ratio, boosted by the letters ѓ, ќ, ѕ and penalized by Serbian-only
+  letters.
+- `VezilkaClientImpl` donates through the Vezilka Public Donation API v1
+  (`POST /api/public/v1/donations/text/`, `X-Donation-Api-Key` header), one
+  item per post with its own `source_url`. Vezilka moderates synchronously, so
+  a submitted batch is settled to ACCEPTED or REJECTED immediately and every
+  post stores its Vezilka id and rejection reason (migration `V7`). The
+  scheduler path only settles batches that were cut short by the API's rate
+  limit. Images are shown in the UI but deliberately not donated: the corpus is
+  about language, and sports photos carry none.
+
+Schema additions are `V6` (post summary) and `V7` (Vezilka verdict per post).
+The shared abstractions and the agentic loop are unchanged; `VezilkaClient`
+keeps every template method and gains `submitTextDonations(List)` beside them,
+because the real API is batch-oriented.
+
+### Configuration
+
+The backend reads secrets from `ai-bot-backend/.env` (git-ignored). Copy
+`ai-bot-backend/.env.example` and fill in:
+
+| Variable | Purpose |
+|----------|---------|
+| `JWT_SECRET_KEY` | Base64 secret for signing JWTs (at least 64 bytes) |
+| `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY` | OpenAI-compatible chat endpoint the bot decides with |
+| `VEZILKA_API_KEY` | Vezilka Public Donation API key, issued by the course |
+
+Playwright downloads its browser on first run. A session against gol.mk with a
+few targets takes a couple of minutes and costs a few cents of LLM usage.
+
 ## Architecture
 
 The project follows the course reference architecture (`emc-2026` / e-shop):
@@ -72,6 +121,7 @@ cd ai-bot-backend
 docker compose up -d
 
 # 2. Backend  (http://localhost:8080, Swagger at /swagger-ui/index.html)
+cp .env.example .env   # then fill in the keys, see Configuration above
 ./mvnw spring-boot:run
 
 # 3. Frontend (http://localhost:3000)
