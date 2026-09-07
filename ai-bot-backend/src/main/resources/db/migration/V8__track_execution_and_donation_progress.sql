@@ -7,10 +7,6 @@ UPDATE extracted_posts SET donation_status = CASE
     ELSE 'ACCEPTED'
 END WHERE vezilka_id IS NOT NULL OR rejection_reason IS NOT NULL;
 
--- Older refresh logic could finish a batch while some posts were still unsent.
-UPDATE donation_batches b SET status = 'SUBMITTED'
-WHERE b.status IN ('ACCEPTED', 'REJECTED')
-  AND EXISTS (
-    SELECT 1 FROM extracted_posts p
-    WHERE p.donation_batch_id = b.id AND p.donation_status IS NULL
-  );
+-- Older code stored no id and no reason for deduplicated items, so a post
+-- without a verdict may already be in the corpus. Finished batches stay
+-- finished; resending those posts could donate them a second time.

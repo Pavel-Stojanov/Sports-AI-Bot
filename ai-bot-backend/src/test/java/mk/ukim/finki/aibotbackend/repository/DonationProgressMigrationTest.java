@@ -15,7 +15,7 @@ class DonationProgressMigrationTest {
     static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16");
 
     @Test
-    void legacyPartialBatchReopensWithoutLosingItsAcceptedPost() throws Exception {
+    void legacyFinishedBatchStaysClosedAndKeepsItsAcceptedPost() throws Exception {
         Flyway.configure().dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword())
             .target("7").load().migrate();
         try (var connection = DriverManager.getConnection(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
@@ -36,7 +36,7 @@ class DonationProgressMigrationTest {
                 .load().migrate();
             try (var rows = statement.executeQuery("SELECT status FROM donation_batches WHERE id = 1")) {
                 assertThat(rows.next()).isTrue();
-                assertThat(rows.getString(1)).isEqualTo("SUBMITTED");
+                assertThat(rows.getString(1)).isEqualTo("ACCEPTED");
             }
             try (var rows = statement.executeQuery("SELECT donation_status, vezilka_id FROM extracted_posts ORDER BY id")) {
                 assertThat(rows.next()).isTrue();

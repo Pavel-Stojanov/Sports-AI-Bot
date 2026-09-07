@@ -114,7 +114,7 @@ instance, not a distributed queue.
 
 **How did you test the fixes?** Show tests for queued runs, pause/resume races,
 partial donation retries, rejected items without IDs, persisted retry timestamps,
-and migration of an old partial batch. The HTTP tests use a local server, so
+one transaction per retried batch, and migration of old verdicts. The HTTP tests use a local server, so
 they exercise request formatting without donating test data.
 
 ## Observed verification

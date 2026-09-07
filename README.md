@@ -38,8 +38,9 @@ available in the UI. The supplied API document also describes media endpoints
 with different authentication restrictions; this bot does not submit media.
 
 Migrations V6 and V7 add summaries and Vezilka results. V8 adds execution numbers,
-explicit post verdicts and retry timestamps. It also reopens old terminal batches
-that still contain unsent posts. V1 through V5 are unchanged.
+explicit post verdicts and retry timestamps. Finished batches from older code stay
+finished, because a post without a stored verdict may be a deduplicated item that
+is already in the corpus. V1 through V5 are unchanged.
 
 ### Session and donation behavior
 
@@ -55,7 +56,8 @@ item was rejected. Rejected items are not retried, even when the response has no
 ID. A deduped item counts as accepted and needs no ID, because the content is
 already in the corpus. A status the client does not know is stored as a
 rejection that names the status, so it is visible and never resent. Unsent items in a partial batch retain their pending status and retry after
-the API's `Retry-After` delay. The scheduler checks once a minute. If the first
+the API's `Retry-After` delay. The scheduler checks once a minute and commits
+each batch on its own, so one failed batch cannot undo another's verdicts. If the first
 request fails before any verdict arrives, the batch remains APPROVED for manual
 retry after the delay.
 
@@ -178,7 +180,8 @@ client against a local test server, without donating to the public corpus.
 
 The test suite covers pause/resume generations, serialized session execution,
 partial donation retries, final rejections without IDs, retry delays across a
-committed transaction, and migration of legacy partial batches.
+committed transaction, isolation between retried batches, and migration of
+legacy verdicts.
 
 See [the demo walkthrough](DEMO.md) for a presentation without slides.
 
