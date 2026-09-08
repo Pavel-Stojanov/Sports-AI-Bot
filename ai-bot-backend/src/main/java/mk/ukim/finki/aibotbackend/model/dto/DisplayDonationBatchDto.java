@@ -1,7 +1,6 @@
 package mk.ukim.finki.aibotbackend.model.dto;
 
 import java.time.Instant;
-
 import java.time.LocalDateTime;
 import java.util.List;
 import mk.ukim.finki.aibotbackend.model.domain.DonationBatch;
@@ -18,7 +17,9 @@ public record DisplayDonationBatchDto(
     long acceptedCount,
     long rejectedCount,
     long pendingCount,
-    Instant nextRetryAt
+    Instant nextRetryAt,
+    int attemptCount,
+    String lastError
 ) {
     public static DisplayDonationBatchDto from(DonationBatch batch) {
         return new DisplayDonationBatchDto(
@@ -34,7 +35,9 @@ public record DisplayDonationBatchDto(
             batch.getPosts().stream().filter(post -> post.getDonationStatus() == DonationStatus.ACCEPTED).count(),
             batch.getPosts().stream().filter(post -> post.getDonationStatus() == DonationStatus.REJECTED).count(),
             batch.getPosts().stream().filter(post -> post.getDonationStatus() == null).count(),
-            batch.getNextRetryAt()
+            batch.getNextRetryAt(),
+            batch.getAttemptCount(),
+            batch.getLastError()
         );
     }
 

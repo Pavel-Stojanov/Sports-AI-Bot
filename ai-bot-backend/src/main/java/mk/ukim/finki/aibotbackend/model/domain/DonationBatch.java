@@ -1,13 +1,12 @@
 package mk.ukim.finki.aibotbackend.model.domain;
 
-import java.time.Instant;
-
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -37,6 +36,12 @@ public class DonationBatch extends BaseAuditableEntity {
     private LocalDateTime submittedAt;
 
     private Instant nextRetryAt;
+
+    /** Submissions so far, manual and scheduled. Automatic retries stop at a limit. */
+    private int attemptCount;
+
+    /** Why the last submission failed; cleared when the batch settles. */
+    private String lastError;
 
     @OneToMany(mappedBy = "donationBatch")
     private List<ExtractedPost> posts = new ArrayList<>();

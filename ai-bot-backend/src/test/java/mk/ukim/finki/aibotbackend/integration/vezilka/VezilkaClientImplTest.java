@@ -7,6 +7,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
+import mk.ukim.finki.aibotbackend.config.HttpClientConfig;
 import mk.ukim.finki.aibotbackend.model.enums.DonationStatus;
 import mk.ukim.finki.aibotbackend.model.exception.VezilkaIntegrationException;
 import org.junit.jupiter.api.AfterEach;
@@ -47,7 +48,7 @@ class VezilkaClientImplTest {
         });
         server.start();
         client = new VezilkaClientImpl(new VezilkaProperties(
-            "http://127.0.0.1:" + server.getAddress().getPort(), "test-key"));
+            "http://127.0.0.1:" + server.getAddress().getPort(), "test-key"), HttpClientConfig.requestFactory(1_000, 5_000));
     }
 
     @AfterEach
@@ -106,6 +107,29 @@ class VezilkaClientImplTest {
         retryAfter = "Wed, 01 Jan 2031 00:00:00 GMT";
         assertThatThrownBy(this::donate).isInstanceOfSatisfying(VezilkaIntegrationException.class,
             error -> assertThat(error.getRetryAt()).isEqualTo(Instant.parse("2031-01-01T00:00:00Z")));
+    }
+
+    @Test
+    void refusedRequestsAreNotRetryable() {
+        status = 401;
+        response = "{\"detail\":\"invalid key\"}";
+        assertThatThrownBy(this::donate).isInstanceOfSatisfying(VezilkaIntegrationException.class,
+            error -> assertThat(error.isRetryable()).isFalse());
+    }
+
+    @Test
+    void serverErrorsAreRetryable() {
+        status = 503;
+        response = "{}";
+        assertThatThrownBy(this::donate).isInstanceOfSatisfying(VezilkaIntegrationException.class,
+            error -> assertThat(error.isRetryable()).isTrue());
+    }
+
+    @Test
+    void malformedAnswersAreNotRetryable() {
+        response = "{}";
+        assertThatThrownBy(this::donate).isInstanceOfSatisfying(VezilkaIntegrationException.class,
+            error -> assertThat(error.isRetryable()).isFalse());
     }
 
     @Test

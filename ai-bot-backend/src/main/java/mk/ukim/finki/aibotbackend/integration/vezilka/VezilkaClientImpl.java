@@ -4,13 +4,12 @@ import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
-
 import java.util.List;
 import mk.ukim.finki.aibotbackend.model.enums.DonationStatus;
 import mk.ukim.finki.aibotbackend.model.exception.VezilkaIntegrationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestClient;
@@ -30,13 +29,11 @@ public class VezilkaClientImpl implements BatchVezilkaClient {
     private static final String DONATION_PATH = "/api/public/v1/donations/{id}/";
     private static final String API_KEY_HEADER = "X-Donation-Api-Key";
 
+    private static final long DEFAULT_RETRY_SECONDS = 60;
+
     private final RestClient restClient;
 
-    public VezilkaClientImpl(VezilkaProperties vezilkaProperties) {
-        SimpleClientHttpRequestFactory requestFactory =
-            new SimpleClientHttpRequestFactory();
-        requestFactory.setConnectTimeout(10_000);
-        requestFactory.setReadTimeout(60000);
+    public VezilkaClientImpl(VezilkaProperties vezilkaProperties, ClientHttpRequestFactory requestFactory) {
         this.restClient = RestClient.builder()
             .requestFactory(requestFactory)
             .baseUrl(vezilkaProperties.baseUrl())
@@ -75,9 +72,11 @@ public class VezilkaClientImpl implements BatchVezilkaClient {
         } catch (HttpStatusCodeException exception) {
             throw new VezilkaIntegrationException(describe(exception), exception, retryAt(exception));
         } catch (RestClientException exception) {
+            // No HTTP answer at all: timeout, reset, DNS. Worth another try later.
             throw new VezilkaIntegrationException(
                 "Donating %d items to Vezilka failed: %s"
-                    .formatted(items.size(), exception.getMessage()), exception);
+                    .formatted(items.size(), exception.getMessage()), exception,
+                Instant.now().plusSeconds(DEFAULT_RETRY_SECONDS));
         }
     }
 
@@ -110,7 +109,12 @@ public class VezilkaClientImpl implements BatchVezilkaClient {
         }
     }
 
+    /** Null for a 4xx other than 429: the request itself is wrong, so sending it again cannot help. */
     private Instant retryAt(HttpStatusCodeException exception) {
+        if (exception.getStatusCode() != HttpStatus.TOO_MANY_REQUESTS
+            && !exception.getStatusCode().is5xxServerError()) {
+            return null;
+        }
         String value = exception.getResponseHeaders() == null ? null
             : exception.getResponseHeaders().getFirst("Retry-After");
         if (value != null) {
@@ -125,7 +129,7 @@ public class VezilkaClientImpl implements BatchVezilkaClient {
                 }
             }
         }
-        return Instant.now().plusSeconds(60);
+        return Instant.now().plusSeconds(DEFAULT_RETRY_SECONDS);
     }
 
     private String describe(HttpStatusCodeException exception) {

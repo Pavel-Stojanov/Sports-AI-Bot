@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.IntStream;
 import mk.ukim.finki.aibotbackend.integration.vezilka.BatchVezilkaClient;
 import mk.ukim.finki.aibotbackend.integration.vezilka.DonationItemResult;
 import mk.ukim.finki.aibotbackend.integration.vezilka.DonationResponse;
@@ -68,7 +69,7 @@ class DonationRetryRaceTest {
         return transaction.execute(status -> {
             ExtractionSession session = sessions.save(new ExtractionSession(
                 SocialNetwork.SPORTS_PORTAL_GOL, slug));
-            return java.util.stream.IntStream.range(0, 2).mapToObj(index -> {
+            return IntStream.range(0, 2).mapToObj(index -> {
                 DonationBatch batch = batches.save(new DonationBatch(DonationStatus.SUBMITTED));
                 ExtractedPost post = new ExtractedPost(session, slug + "-" + index, "gol.mk",
                     "Вардар победи со 3:1 во првенството.", "https://www.gol.mk/fudbal/" + slug + "-" + index, null, 0.95);
