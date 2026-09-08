@@ -1,7 +1,6 @@
 package mk.ukim.finki.aibotbackend.web.handler;
 
 import mk.ukim.finki.aibotbackend.model.exception.InvalidDonationStateException;
-
 import mk.ukim.finki.aibotbackend.model.exception.PostNotFoundException;
 import mk.ukim.finki.aibotbackend.web.controller.ExtractedPostController;
 import mk.ukim.finki.aibotbackend.web.dto.ApiError;

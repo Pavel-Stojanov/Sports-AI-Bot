@@ -1,12 +1,10 @@
 package mk.ukim.finki.aibotbackend.model.domain;
 
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import mk.ukim.finki.aibotbackend.model.enums.DonationStatus;
-
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
@@ -18,6 +16,7 @@ import java.util.List;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import mk.ukim.finki.aibotbackend.model.enums.DonationStatus;
 
 /**
  * A piece of content the bot extracted from the social network.

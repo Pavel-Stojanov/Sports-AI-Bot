@@ -1,10 +1,9 @@
 package mk.ukim.finki.aibotbackend.model.dto;
 
-import mk.ukim.finki.aibotbackend.model.enums.DonationStatus;
-
 import java.time.LocalDateTime;
 import java.util.List;
 import mk.ukim.finki.aibotbackend.model.domain.ExtractedPost;
+import mk.ukim.finki.aibotbackend.model.enums.DonationStatus;
 import mk.ukim.finki.aibotbackend.model.enums.SocialNetwork;
 
 public record DisplayExtractedPostDto(

@@ -1,7 +1,5 @@
 package mk.ukim.finki.aibotbackend.bot.extraction;
 
-import mk.ukim.finki.aibotbackend.model.exception.BotExecutionException;
-
 import java.util.List;
 import mk.ukim.finki.aibotbackend.bot.browser.PageSnapshot;
 import mk.ukim.finki.aibotbackend.bot.llm.BotAction;
@@ -9,6 +7,7 @@ import mk.ukim.finki.aibotbackend.bot.llm.BotDecision;
 import mk.ukim.finki.aibotbackend.bot.llm.LlmClient;
 import mk.ukim.finki.aibotbackend.model.dto.CreateExtractedPostDto;
 import mk.ukim.finki.aibotbackend.model.enums.MediaType;
+import mk.ukim.finki.aibotbackend.model.exception.BotExecutionException;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;

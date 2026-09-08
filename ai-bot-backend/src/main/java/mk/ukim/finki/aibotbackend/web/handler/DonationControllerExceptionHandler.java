@@ -1,13 +1,12 @@
 package mk.ukim.finki.aibotbackend.web.handler;
 
-import org.springframework.dao.OptimisticLockingFailureException;
-
 import mk.ukim.finki.aibotbackend.model.exception.DonationBatchNotFoundException;
 import mk.ukim.finki.aibotbackend.model.exception.InvalidDonationStateException;
 import mk.ukim.finki.aibotbackend.model.exception.PostNotFoundException;
 import mk.ukim.finki.aibotbackend.model.exception.VezilkaIntegrationException;
 import mk.ukim.finki.aibotbackend.web.controller.DonationController;
 import mk.ukim.finki.aibotbackend.web.dto.ApiError;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;

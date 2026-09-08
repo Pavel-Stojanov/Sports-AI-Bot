@@ -1,7 +1,5 @@
 package mk.ukim.finki.aibotbackend.bot.extraction;
 
-import mk.ukim.finki.aibotbackend.model.exception.BotExecutionException;
-
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -16,6 +14,7 @@ import mk.ukim.finki.aibotbackend.bot.llm.LlmClient;
 import mk.ukim.finki.aibotbackend.model.dto.CreateExtractedPostDto;
 import mk.ukim.finki.aibotbackend.model.dto.CreateMediaItemDto;
 import mk.ukim.finki.aibotbackend.model.enums.MediaType;
+import mk.ukim.finki.aibotbackend.model.exception.BotExecutionException;
 import org.springframework.stereotype.Component;
 
 /**

@@ -1,12 +1,11 @@
 package mk.ukim.finki.aibotbackend.service.domain.impl;
 
-import java.util.Set;
-import mk.ukim.finki.aibotbackend.model.exception.InvalidDonationStateException;
-
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import mk.ukim.finki.aibotbackend.model.domain.ExtractedPost;
 import mk.ukim.finki.aibotbackend.model.dto.PostFilterDto;
+import mk.ukim.finki.aibotbackend.model.exception.InvalidDonationStateException;
 import mk.ukim.finki.aibotbackend.repository.ExtractedPostRepository;
 import mk.ukim.finki.aibotbackend.service.domain.ExtractedPostService;
 import org.springframework.data.domain.Page;
