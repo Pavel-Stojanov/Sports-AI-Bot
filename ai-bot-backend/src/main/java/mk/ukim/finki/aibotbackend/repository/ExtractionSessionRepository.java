@@ -1,8 +1,8 @@
 package mk.ukim.finki.aibotbackend.repository;
 
+import jakarta.persistence.LockModeType;
 import java.time.LocalDateTime;
 import java.util.Optional;
-import jakarta.persistence.LockModeType;
 import mk.ukim.finki.aibotbackend.model.domain.ExtractionSession;
 import mk.ukim.finki.aibotbackend.model.enums.SessionStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -16,6 +16,8 @@ public interface ExtractionSessionRepository extends JpaRepository<ExtractionSes
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select s from ExtractionSession s where s.id = :id")
     Optional<ExtractionSession> findForUpdate(Long id);
+
+    boolean existsByIdAndStatusAndExecutionNumber(Long id, SessionStatus status, long executionNumber);
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""

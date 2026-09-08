@@ -82,6 +82,11 @@ public class ExtractionSessionServiceImpl implements ExtractionSessionService {
     }
 
     @Override
+    public boolean isRunning(Long id, long executionNumber) {
+        return extractionSessionRepository.existsByIdAndStatusAndExecutionNumber(id, SessionStatus.RUNNING, executionNumber);
+    }
+
+    @Override
     @Transactional
     public void finishExecution(Long id, long executionNumber, boolean successful) {
         extractionSessionRepository.finishExecution(id, executionNumber,

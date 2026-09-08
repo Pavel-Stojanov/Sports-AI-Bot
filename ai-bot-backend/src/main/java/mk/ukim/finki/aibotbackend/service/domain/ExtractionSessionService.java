@@ -38,4 +38,7 @@ public interface ExtractionSessionService {
     ExtractionSession fail(Long id);
 
     void finishExecution(Long id, long executionNumber, boolean successful);
+
+    /** Whether the session is RUNNING under exactly this execution number. */
+    boolean isRunning(Long id, long executionNumber);
 }

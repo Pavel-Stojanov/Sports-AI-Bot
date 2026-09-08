@@ -1,33 +1,40 @@
 package mk.ukim.finki.aibotbackend.bot.core;
 
-import mk.ukim.finki.aibotbackend.bot.llm.BotAction;
-import mk.ukim.finki.aibotbackend.model.enums.BotActionType;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import mk.ukim.finki.aibotbackend.bot.llm.BotAction;
 import mk.ukim.finki.aibotbackend.model.domain.ExtractedPost;
 import mk.ukim.finki.aibotbackend.model.domain.ExtractionSession;
 import mk.ukim.finki.aibotbackend.model.domain.ExtractionTarget;
 import mk.ukim.finki.aibotbackend.model.dto.CreateExtractedPostDto;
 import mk.ukim.finki.aibotbackend.model.dto.PostFilterDto;
+import mk.ukim.finki.aibotbackend.model.enums.BotActionType;
 import mk.ukim.finki.aibotbackend.model.enums.SessionStatus;
 import mk.ukim.finki.aibotbackend.model.enums.SocialNetwork;
 import mk.ukim.finki.aibotbackend.model.enums.TargetType;
+import mk.ukim.finki.aibotbackend.service.application.ExtractionSessionApplicationService;
 import mk.ukim.finki.aibotbackend.service.domain.ExtractedPostService;
 import mk.ukim.finki.aibotbackend.service.domain.ExtractionSessionService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 /**
  * Integration-tests {@link BotOrchestratorImpl#runSession} against the full
@@ -66,24 +73,24 @@ public class BotOrchestratorImplTest {
     private ExtractedPostService extractedPostService;
 
     @Autowired
-    private mk.ukim.finki.aibotbackend.service.application.ExtractionSessionApplicationService applicationService;
+    private ExtractionSessionApplicationService applicationService;
 
     @Autowired
-    @org.springframework.beans.factory.annotation.Qualifier("botExecutor")
-    private org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor botExecutor;
+    @Qualifier("botExecutor")
+    private ThreadPoolTaskExecutor botExecutor;
 
     @Test
     void concurrentApiStartsQueueBehindTheActiveBrowserRun() throws Exception {
-        var entered = new java.util.concurrent.CountDownLatch(1);
-        var release = new java.util.concurrent.CountDownLatch(1);
-        var finished = new java.util.concurrent.CountDownLatch(2);
+        var entered = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var finished = new CountDownLatch(2);
         when(socialNetworkBot.execute(any(), any())).thenAnswer(invocation -> {
             entered.countDown();
-            if (!release.await(10, java.util.concurrent.TimeUnit.SECONDS)) throw new AssertionError("Test release timed out");
+            if (!release.await(10, TimeUnit.SECONDS)) throw new AssertionError("Test release timed out");
             return List.of(new CreateExtractedPostDto("queued", "gol.mk", "Вардар победи во натпреварот.",
                 null, "https://www.gol.mk/fudbal/queued", null, 0.9, List.of()));
         });
-        org.mockito.Mockito.doAnswer(invocation -> { finished.countDown(); return null; })
+        doAnswer(invocation -> { finished.countDown(); return null; })
             .when(socialNetworkBot).shutdown();
         ExtractionSession first = new ExtractionSession(SocialNetwork.SPORTS_PORTAL_GOL, "first queued run");
         first.getTargets().add(new ExtractionTarget(TargetType.FEED_URL, "https://www.gol.mk/", first));
@@ -93,14 +100,14 @@ public class BotOrchestratorImplTest {
         Long secondId = extractionSessionService.create(second).getId();
         applicationService.start(firstId);
         try {
-            assertThat(entered.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+            assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
             applicationService.start(secondId);
             assertThat(botExecutor.getThreadPoolExecutor().getQueue()).hasSize(1);
-            verify(socialNetworkBot, org.mockito.Mockito.times(1)).login();
+            verify(socialNetworkBot, times(1)).login();
         } finally {
             release.countDown();
         }
-        assertThat(finished.await(10, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+        assertThat(finished.await(10, TimeUnit.SECONDS)).isTrue();
         assertThat(extractionSessionService.findById(firstId).orElseThrow().getStatus()).isEqualTo(SessionStatus.COMPLETED);
         assertThat(extractionSessionService.findById(secondId).orElseThrow().getStatus()).isEqualTo(SessionStatus.COMPLETED);
     }
@@ -122,7 +129,7 @@ public class BotOrchestratorImplTest {
         extractionSessionService.stop(sessionId);
         extractionSessionService.start(sessionId);
         botOrchestrator.runSession(sessionId, oldExecution);
-        org.mockito.Mockito.verifyNoInteractions(socialNetworkBot);
+        verifyNoInteractions(socialNetworkBot);
         assertThat(extractionSessionService.findById(sessionId).orElseThrow().getStatus())
             .isEqualTo(SessionStatus.RUNNING);
     }
@@ -155,6 +162,20 @@ public class BotOrchestratorImplTest {
         botOrchestrator.runSession(sessionId, extractionSessionService.findById(sessionId).orElseThrow().getExecutionNumber());
         assertThat(extractedPostService.findAll(new PostFilterDto(sessionId, null, null, null, null), 0, 10)
             .getTotalElements()).isEqualTo(1);
+    }
+
+    @Test
+    void resumedRunThatExtractsNothingIsNotReportedAsCompleted() {
+        Long sessionId = createRunningSessionWithTarget();
+        var session = extractionSessionService.findById(sessionId).orElseThrow();
+        extractedPostService.saveAll(List.of(new ExtractedPost(session, "earlier-run", "gol.mk",
+            "Вардар победи во натпреварот.", "https://www.gol.mk/fudbal/earlier", null, 0.9)));
+        extractionSessionService.stop(sessionId);
+        extractionSessionService.start(sessionId);
+        when(socialNetworkBot.execute(any(), any())).thenReturn(List.of());
+        botOrchestrator.runSession(sessionId, extractionSessionService.findById(sessionId).orElseThrow().getExecutionNumber());
+        assertThat(extractionSessionService.findById(sessionId).orElseThrow().getStatus())
+            .isEqualTo(SessionStatus.FAILED);
     }
 
     @Test

@@ -4,14 +4,13 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
+import mk.ukim.finki.aibotbackend.bot.llm.BotAction;
 import mk.ukim.finki.aibotbackend.model.domain.ExtractionSession;
 import mk.ukim.finki.aibotbackend.model.domain.ExtractionTarget;
 import mk.ukim.finki.aibotbackend.model.dto.CreateExtractedPostDto;
-import mk.ukim.finki.aibotbackend.model.exception.SessionNotFoundException;
-import mk.ukim.finki.aibotbackend.model.exception.BotExecutionException;
-import mk.ukim.finki.aibotbackend.model.enums.SessionStatus;
 import mk.ukim.finki.aibotbackend.model.enums.BotActionType;
-import mk.ukim.finki.aibotbackend.bot.llm.BotAction;
+import mk.ukim.finki.aibotbackend.model.exception.BotExecutionException;
+import mk.ukim.finki.aibotbackend.model.exception.SessionNotFoundException;
 import mk.ukim.finki.aibotbackend.service.domain.BotActionLogService;
 import mk.ukim.finki.aibotbackend.service.domain.ExtractedPostService;
 import mk.ukim.finki.aibotbackend.service.domain.ExtractionSessionService;
@@ -55,17 +54,19 @@ public class BotOrchestratorImpl implements BotOrchestrator {
             return loaded;
         });
 
-        if (session.getStatus() != SessionStatus.RUNNING || session.getExecutionNumber() != executionNumber) {
+        // A queued run whose session was stopped or restarted meanwhile must not open a browser.
+        if (!extractionSessionService.isRunning(sessionId, executionNumber)) {
             return;
         }
         try {
-            requireRunning(sessionId, executionNumber);
             socialNetworkBot.login();
             // The LLM sometimes EXTRACTs the same page more than once despite the
             // prompt rules, so posts are deduplicated by externalId across the run.
             Set<String> seenExternalIds = new HashSet<>(
                 extractedPostService.findExternalIdsBySessionId(sessionId));
-            int postCount = seenExternalIds.size();
+            // Counts what this execution extracted. Posts saved by an earlier
+            // execution must not make an empty resumed run look successful.
+            int extractedCount = 0;
             for (ExtractionTarget target : session.getTargets()) {
                 requireRunning(sessionId, executionNumber);
                 List<CreateExtractedPostDto> extracted = socialNetworkBot.execute(
@@ -77,14 +78,14 @@ public class BotOrchestratorImpl implements BotOrchestrator {
                         requireRunning(sessionId, executionNumber);
                     });
                 requireRunning(sessionId, executionNumber);
-                postCount += extracted.size();
+                extractedCount += extracted.size();
                 extractedPostService.saveAll(
                     extracted.stream()
                         .filter(dto -> dto.externalId() == null || seenExternalIds.add(dto.externalId()))
                         .map(dto -> dto.toExtractedPost(session))
                         .toList());
             }
-            if (postCount == 0) {
+            if (extractedCount == 0) {
                 throw new BotExecutionException("No articles were extracted. Check the target and bot trace.");
             }
             extractionSessionService.finishExecution(sessionId, executionNumber, true);
@@ -100,9 +101,8 @@ public class BotOrchestratorImpl implements BotOrchestrator {
         }
     }
     private void requireRunning(Long sessionId, long executionNumber) {
-        ExtractionSession current = extractionSessionService.findById(sessionId)
-            .orElseThrow(() -> new SessionNotFoundException(sessionId));
-        if (current.getStatus() != SessionStatus.RUNNING || current.getExecutionNumber() != executionNumber) {
+        // Runs after every bot action, so it is one indexed lookup, not an entity load.
+        if (!extractionSessionService.isRunning(sessionId, executionNumber)) {
             throw new SessionPausedException();
         }
     }
