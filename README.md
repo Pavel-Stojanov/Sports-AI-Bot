@@ -20,7 +20,8 @@ summaries for browsing, but donates the extracted article text.
   limited to 10,000 characters per page.
 - `OpenAiCompatibleLlmClient` sends the page, goal and recent action history to the
   configured chat endpoint. It validates decisions and attempts one repair of
-  malformed JSON before failing the session.
+  malformed JSON. A second invalid decision ends that target with FINISH, so the
+  articles it collected are saved instead of lost.
 - `GolMkBot` supports feed URLs, section names, keywords and teams or competitions.
   gol.mk needs no login. Listing and scoreboard pages supply links to articles.
 - `GolMkContentExtractor` extracts article text, source URLs and images, plus an
@@ -40,26 +41,40 @@ with different authentication restrictions; this bot does not submit media.
 Migrations V6 and V7 add summaries and Vezilka results. V8 adds execution numbers,
 explicit post verdicts and retry timestamps. Finished batches from older code stay
 finished, because a post without a stored verdict may be a deduplicated item that
-is already in the corpus. V1 through V5 are unchanged.
+is already in the corpus. A batch the old code left SUBMITTED is retried, and a
+deduplicated post in it is sent once more; Vezilka answers deduped again. V9 adds
+the attempt count and last error of a batch. V1 through V5 are unchanged.
 
 ### Session and donation behavior
 
 Stop takes effect at the next action boundary, after an in-flight browser or LLM
-call returns. An LLM call that times out or answers with a 5xx status is retried
-twice, two and four seconds apart, before the session fails. A 429 waits for the
-provider's `Retry-After` delay, up to three times. Resume starts navigation again. Posts saved by completed targets
-remain in the database and are deduplicated within that session. A target that
-was interrupted before its posts were saved must be extracted again.
+call returns. An LLM call that times out, answers with a 5xx status or answers
+without a body is retried twice, two and four seconds apart, before the session
+fails. A 429 waits for the provider's `Retry-After` delay, up to three times.
+Resume starts navigation again. Posts saved by completed targets remain in the
+database and are deduplicated within that session. A target that was interrupted
+before its posts were saved must be extracted again. A run that extracts nothing
+is FAILED, even when an earlier run of the same session saved posts. The stop
+check after every action is one indexed query.
 
 Vezilka returns final per-item verdicts synchronously. HTTP 200 can mean every
 item was rejected. Rejected items are not retried, even when the response has no
 ID. A deduped item counts as accepted and needs no ID, because the content is
 already in the corpus. A status the client does not know is stored as a
-rejection that names the status, so it is visible and never resent. Unsent items in a partial batch retain their pending status and retry after
-the API's `Retry-After` delay. The scheduler checks once a minute and commits
-each batch on its own, so one failed batch cannot undo another's verdicts. If the first
-request fails before any verdict arrives, the batch remains APPROVED for manual
-retry after the delay.
+rejection that names the status, so it is visible and never resent. Each item
+carries `retrieved_at`, the time the article was extracted.
+
+A submission leases the batch in one short transaction, sends each chunk of
+100 posts with no database lock or connection held, and commits every chunk's
+verdicts before the next request. Unsent items in a partial batch keep their
+pending status and retry after the API's `Retry-After` delay. A 429, a 5xx or a
+transport failure is retryable; any other 4xx and a malformed answer are not.
+The scheduler checks once a minute, picks only batches whose retry time has
+passed, and handles them one at a time, so one failed batch cannot undo
+another's verdicts. If the first request fails before any verdict arrives, the
+batch remains APPROVED for manual retry after the delay. A failure that cannot
+be retried, or the fifth failed attempt, moves the batch to FAILED with the
+reason shown on its card; a person can submit it again once the cause is fixed.
 
 The batch status ACCEPTED means at least one post was accepted and none remain
 pending. A batch can contain both accepted and rejected posts; the UI shows
@@ -81,6 +96,10 @@ The backend reads secrets from `ai-bot-backend/.env` (git-ignored). Copy
 | `JWT_SECRET_KEY` | Base64 secret for signing JWTs (at least 64 bytes) |
 | `LLM_BASE_URL`, `LLM_MODEL`, `LLM_API_KEY` | OpenAI-compatible chat endpoint the bot decides with |
 | `VEZILKA_API_KEY` | Vezilka Public Donation API key, issued by the course |
+
+The LLM and Vezilka clients share one HTTP request factory. Its timeouts are the
+Spring properties `http.client.connect-timeout-ms` and `http.client.read-timeout-ms`,
+10 and 60 seconds by default.
 
 Playwright downloads its browser on first run. Live runs depend on the source site and the configured LLM. They may take several
 minutes, and the provider may charge for requests.
@@ -180,8 +199,9 @@ client against a local test server, without donating to the public corpus.
 
 The test suite covers pause/resume generations, serialized session execution,
 partial donation retries, final rejections without IDs, retry delays across a
-committed transaction, isolation between retried batches, and migration of
-legacy verdicts.
+committed transaction, isolation between retried batches, permanent failures
+and the attempt limit, empty resumed runs, the FINISH fallback after invalid
+decisions, and migration of legacy verdicts.
 
 ## Milestone evidence
 
@@ -205,8 +225,11 @@ and its source before donating. A failed extraction step stays in the trace and
 the run continues with the articles collected so far. Empty sessions and
 decision errors are reported as FAILED.
 
-The language heuristic can misclassify short or mixed-language text. Existing
-post scores are not recalculated by V8. The bot does not restore browser state
+The language heuristic can misclassify short or mixed-language text. It counts
+foreign letters per word, so one Russian or Bulgarian name costs a little while
+a paragraph in those languages fails, and word evidence only counts in full once
+half of the letters are Cyrillic. Existing post scores are not recalculated by
+any migration. The bot does not restore browser state
 after a server restart. A session left RUNNING can be stopped and resumed through
 the UI. Run a single backend instance; this is not a distributed job queue.
 
