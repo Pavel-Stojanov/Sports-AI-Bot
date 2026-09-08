@@ -183,8 +183,6 @@ partial donation retries, final rejections without IDs, retry delays across a
 committed transaction, isolation between retried batches, and migration of
 legacy verdicts.
 
-See [the demo walkthrough](DEMO.md) for a presentation without slides.
-
 ## Milestone evidence
 
 | Milestone | Implementation and verification |
