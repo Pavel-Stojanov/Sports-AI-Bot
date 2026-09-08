@@ -13,25 +13,33 @@ const DonationsProvider = ({ children }: { children: ReactNode }) => {
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const requestNumber = useRef(0);
+  const inFlight = useRef(false);
   const cancelRequests = useCallback(() => { requestNumber.current++; }, []);
 
-  const refresh = useCallback(async () => {
+  const load = useCallback(async (poll: boolean) => {
+    // A slow response must not be replaced by the next poll before it arrives.
+    if (poll && inFlight.current) return;
     const request = ++requestNumber.current;
+    inFlight.current = true;
     try {
       const response = await donationApi.findAll();
       if (request === requestNumber.current) setDonations(response.data);
     } catch (err) {
       if (request === requestNumber.current) showSnackbar(extractErrorMessage(err, 'Failed to load donations.'), 'error');
     } finally {
-      if (request === requestNumber.current) setLoading(false);
+      if (request === requestNumber.current) {
+        inFlight.current = false;
+        setLoading(false);
+      }
     }
   }, [showSnackbar]);
+  const refresh = useCallback(() => load(false), [load]);
 
   useEffect(() => {
     void refresh();
-    const timer = setInterval(() => void refresh(), 5000);
+    const timer = setInterval(() => void load(true), 5000);
     return () => { clearInterval(timer); cancelRequests(); };
-  }, [refresh, cancelRequests]);
+  }, [refresh, load, cancelRequests]);
 
   const mutate = useCallback(async (action: () => Promise<unknown>, fallback: string) => {
     if (busyRef.current) return false;
