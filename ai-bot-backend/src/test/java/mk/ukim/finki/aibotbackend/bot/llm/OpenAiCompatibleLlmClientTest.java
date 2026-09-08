@@ -1,8 +1,16 @@
 package mk.ukim.finki.aibotbackend.bot.llm;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.sun.net.httpserver.HttpServer;
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
+import mk.ukim.finki.aibotbackend.bot.browser.PageSnapshot;
+import mk.ukim.finki.aibotbackend.config.HttpClientConfig;
 import mk.ukim.finki.aibotbackend.model.enums.BotActionType;
+import mk.ukim.finki.aibotbackend.model.exception.BotExecutionException;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -14,13 +22,17 @@ public class OpenAiCompatibleLlmClientTest {
         "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"ok\"}}]}";
 
     /** Answers the given HTTP statuses in order; the last one repeats. */
-    private static com.sun.net.httpserver.HttpServer server(
-        java.util.concurrent.atomic.AtomicInteger requests, int... statuses) throws java.io.IOException {
-        var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+    private static HttpServer server(AtomicInteger requests, int... statuses) throws IOException {
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", exchange -> {
             int index = Math.min(requests.getAndIncrement(), statuses.length - 1);
+            if (statuses[index] == 204) {
+                exchange.sendResponseHeaders(204, -1);
+                exchange.close();
+                return;
+            }
             byte[] bytes = (statuses[index] == 200 ? COMPLETION : "{\"error\":\"down\"}")
-                .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                .getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().set("Content-Type", "application/json");
             exchange.sendResponseHeaders(statuses[index], bytes.length);
             exchange.getResponseBody().write(bytes);
@@ -32,11 +44,11 @@ public class OpenAiCompatibleLlmClientTest {
 
     @Test
     void providerOutagesAreRetriedBeforeFailing() throws Exception {
-        var requests = new java.util.concurrent.atomic.AtomicInteger();
+        var requests = new AtomicInteger();
         var server = server(requests, 503, 200);
         try {
             OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(new LlmProperties(
-                "http://127.0.0.1:" + server.getAddress().getPort(), "test", "test"));
+                "http://127.0.0.1:" + server.getAddress().getPort(), "test", "test"), HttpClientConfig.requestFactory(1_000, 5_000));
             assertThat(client.complete("system", "user")).isEqualTo("ok");
             assertThat(requests).hasValue(2);
         } finally {
@@ -46,13 +58,13 @@ public class OpenAiCompatibleLlmClientTest {
 
     @Test
     void clientErrorsAreNotRetried() throws Exception {
-        var requests = new java.util.concurrent.atomic.AtomicInteger();
+        var requests = new AtomicInteger();
         var server = server(requests, 400);
         try {
             OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(new LlmProperties(
-                "http://127.0.0.1:" + server.getAddress().getPort(), "test", "test"));
+                "http://127.0.0.1:" + server.getAddress().getPort(), "test", "test"), HttpClientConfig.requestFactory(1_000, 5_000));
             assertThatThrownBy(() -> client.complete("system", "user"))
-                .isInstanceOf(mk.ukim.finki.aibotbackend.model.exception.BotExecutionException.class);
+                .isInstanceOf(BotExecutionException.class);
             assertThat(requests).hasValue(1);
         } finally {
             server.stop(0);
@@ -60,20 +72,34 @@ public class OpenAiCompatibleLlmClientTest {
     }
 
     @Test
-    void malformedResponsesFailTheRunAfterOneRepairAttempt() {
-        var calls = new java.util.concurrent.atomic.AtomicInteger();
+    void emptyBodiesAreRetriedLikeTimeouts() throws Exception {
+        var requests = new AtomicInteger();
+        var server = server(requests, 204, 200);
+        try {
+            OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(new LlmProperties(
+                "http://127.0.0.1:" + server.getAddress().getPort(), "test", "test"), HttpClientConfig.requestFactory(1_000, 5_000));
+            assertThat(client.complete("system", "user")).isEqualTo("ok");
+            assertThat(requests).hasValue(2);
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void malformedResponsesEndTheTargetWithFinishAfterOneRepairAttempt() {
+        var calls = new AtomicInteger();
         OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(
-            new LlmProperties("http://127.0.0.1", "test", "test")) {
+            new LlmProperties("http://127.0.0.1", "test", "test"), HttpClientConfig.requestFactory(1_000, 5_000)) {
             @Override
             public String complete(String systemPrompt, String userPrompt) {
                 calls.incrementAndGet();
                 return "{}";
             }
         };
-        assertThatThrownBy(() -> client.decideNextAction(
-            new mk.ukim.finki.aibotbackend.bot.browser.PageSnapshot("https://www.gol.mk/", "Sports", "text", null),
-            "Extract articles", List.of()))
-            .isInstanceOf(mk.ukim.finki.aibotbackend.model.exception.BotExecutionException.class);
+        BotDecision decision = client.decideNextAction(
+            new PageSnapshot("https://www.gol.mk/", "Sports", "text", null), "Extract articles", List.of());
+        assertThat(decision.action().type()).isEqualTo(BotActionType.FINISH);
+        assertThat(decision.goalReached()).isFalse();
         assertThat(calls).hasValue(2);
     }
 

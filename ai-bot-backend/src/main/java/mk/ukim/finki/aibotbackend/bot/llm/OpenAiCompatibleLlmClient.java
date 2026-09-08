@@ -1,7 +1,5 @@
 package mk.ukim.finki.aibotbackend.bot.llm;
 
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
-
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -16,6 +14,7 @@ import mk.ukim.finki.aibotbackend.model.exception.BotExecutionException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -80,12 +79,8 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
     private final RestClient restClient;
     private final LlmProperties llmProperties;
 
-    public OpenAiCompatibleLlmClient(LlmProperties llmProperties) {
+    public OpenAiCompatibleLlmClient(LlmProperties llmProperties, ClientHttpRequestFactory requestFactory) {
         this.llmProperties = llmProperties;
-        SimpleClientHttpRequestFactory requestFactory =
-            new SimpleClientHttpRequestFactory();
-        requestFactory.setConnectTimeout(10_000);
-        requestFactory.setReadTimeout(60000);
         this.restClient = RestClient.builder()
             .requestFactory(requestFactory)
             .baseUrl(llmProperties.baseUrl())
@@ -106,13 +101,7 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
         int retries = 0;
         while (true) {
             try {
-                JsonNode response = restClient.post()
-                    .uri("/chat/completions")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(body)
-                    .retrieve()
-                    .body(JsonNode.class);
-                return response.path("choices").path(0).path("message").path("content").asText();
+                return post(body).path("choices").path(0).path("message").path("content").asText();
             } catch (RestClientResponseException exception) {
                 boolean rateLimited = exception.getStatusCode().value() == HttpStatus.TOO_MANY_REQUESTS.value();
                 int limit = rateLimited ? MAX_RATE_LIMIT_RETRIES : MAX_TRANSPORT_RETRIES;
@@ -141,6 +130,20 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
                 pause(delayMillis);
             }
         }
+    }
+
+    private JsonNode post(Map<String, Object> body) {
+        JsonNode response = restClient.post()
+            .uri("/chat/completions")
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(body)
+            .retrieve()
+            .body(JsonNode.class);
+        if (response == null) {
+            // A 2xx without a body is a broken answer, not a verdict. Retry it like a timeout.
+            throw new RestClientException("LLM answered with an empty body");
+        }
+        return response;
     }
 
     private static void pause(long delayMillis) {
@@ -200,7 +203,12 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
             try {
                 return guardFirstDecision(parseDecision(retryRaw), history);
             } catch (JsonProcessingException | IllegalArgumentException secondError) {
-                throw new BotExecutionException("LLM returned an invalid decision twice.", secondError);
+                // The loop calls this outside its per-action guard, so throwing here would
+                // drop every article this target has collected. Close the target instead.
+                log.warn("LLM returned an invalid decision twice; finishing this target: {}", secondError.getMessage());
+                return new BotDecision(
+                    new BotAction(BotActionType.FINISH, null, null, "invalid decision twice"),
+                    false, "The LLM returned an invalid decision twice, so this target ends here.");
             }
         }
     }
