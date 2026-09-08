@@ -2,6 +2,7 @@ import { Button, Card, CardActions, CardContent, Chip, Stack, Typography } from 
 import ThumbUpIcon from '@mui/icons-material/ThumbUp';
 import SendIcon from '@mui/icons-material/Send';
 import type { DonationBatchResponse, DonationStatus } from '../../../../api/types/donation.ts';
+import useNow from '../../../../hooks/useNow.ts';
 
 interface DonationBatchCardProps {
   batch: DonationBatchResponse;
@@ -20,6 +21,11 @@ const STATUS_COLOR: Record<DonationStatus, 'default' | 'info' | 'warning' | 'suc
 };
 
 const DonationBatchCard = ({ batch, onApprove, onSubmit, busy }: DonationBatchCardProps) => {
+  const now = useNow();
+  const retryTime = batch.nextRetryAt ? new Date(batch.nextRetryAt) : null;
+  // The backend refuses a submission before the retry time, so the button follows the same rule.
+  const waitingForRetry = retryTime !== null && retryTime.getTime() > now;
+  const submittable = batch.status === 'APPROVED' || batch.status === 'SUBMITTED' || batch.status === 'FAILED';
   return (
     <Card>
       <CardContent>
@@ -31,11 +37,17 @@ const DonationBatchCard = ({ batch, onApprove, onSubmit, busy }: DonationBatchCa
         <Typography variant='body2'>
           {batch.acceptedCount} accepted, {batch.rejectedCount} rejected, {batch.pendingCount} pending
         </Typography>
-        {batch.nextRetryAt && (
-          <Typography variant='body2'>Retry after {new Date(batch.nextRetryAt).toLocaleString()}</Typography>
+        {retryTime && (
+          <Typography variant='body2'>Retry after {retryTime.toLocaleString()}</Typography>
         )}
         {batch.status === 'SUBMITTED' && (
           <Typography variant='body2'>Unsent posts will retry automatically after the delay.</Typography>
+        )}
+        {batch.status === 'FAILED' && (
+          <Typography variant='body2'>Automatic retries stopped after {batch.attemptCount} attempt(s). Retry by hand once the cause is fixed.</Typography>
+        )}
+        {batch.lastError && (
+          <Typography variant='body2' color='error'>Last error: {batch.lastError}</Typography>
         )}
         {batch.vezilkaReference && (
           <Typography variant='body2'>Vezilka reference: {batch.vezilkaReference}</Typography>
@@ -55,10 +67,10 @@ const DonationBatchCard = ({ batch, onApprove, onSubmit, busy }: DonationBatchCa
         </Button>
         <Button
           startIcon={<SendIcon/>}
-          disabled={busy || (batch.status !== 'APPROVED' && batch.status !== 'SUBMITTED')}
+          disabled={busy || !submittable || waitingForRetry}
           onClick={() => onSubmit(batch.id)}
         >
-          {batch.status === 'SUBMITTED' ? 'Retry pending posts' : 'Submit to Vezilka'}
+          {batch.status === 'APPROVED' ? 'Submit to Vezilka' : 'Retry pending posts'}
         </Button>
       </CardActions>
     </Card>

@@ -44,7 +44,6 @@ const DonationsPage = () => {
            ))}
          </Grid>
          {newBatchDialogOpen && <SubmitDonationDialog
-           open={newBatchDialogOpen}
            onClose={() => setNewBatchDialogOpen(false)}
            onCreate={onCreate}
            busy={busy}

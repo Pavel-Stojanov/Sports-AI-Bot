@@ -8,42 +8,41 @@ import type { CreateDonationBatchRequest } from '../../../../api/types/donation.
 import postApi from '../../../../api/postApi.ts';
 import extractErrorMessage from '../../../../api/extractErrorMessage.ts';
 import useSnackbar from '../../../../hooks/useSnackbar.ts';
+import useLatestRequest from '../../../../hooks/useLatestRequest.ts';
 
 interface SubmitDonationDialogProps {
-  open: boolean;
   onClose: () => void;
   busy: boolean;
   onCreate: (data: CreateDonationBatchRequest) => Promise<boolean>;
 }
 
-const SubmitDonationDialog = ({ open, onClose, onCreate, busy }: SubmitDonationDialogProps) => {
+/** Mounted only while open, so closing it resets the selection and page. */
+const SubmitDonationDialog = ({ onClose, onCreate, busy }: SubmitDonationDialogProps) => {
   const { showSnackbar } = useSnackbar();
 
   const [page, setPage] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [candidates, setCandidates] = useState<PostResponse[]>([]);
   const [selected, setSelected] = useState<number[]>([]);
-  const [loading, setLoading] = useState<boolean>(false);
+  const [answeredPage, setAnsweredPage] = useState<number | null>(null);
+  const loading = answeredPage !== page;
+  const { run, cancel } = useLatestRequest();
 
   useEffect(() => {
-    if (!open) return;
-    let active = true;
     const fetch = async () => {
-      setLoading(true);
-      try {
-        const response = await postApi.findAll({ donated: false, minMacedonianConfidence: 0.6 }, page, 50);
-        if (!active) return;
-        setCandidates(response.data.content);
-        setTotalPages(response.data.totalPages);
-      } catch (err) {
-        if (active) showSnackbar(extractErrorMessage(err, 'Failed to load posts.'), 'error');
-      } finally {
-        if (active) setLoading(false);
+      const result = await run(() => postApi.findAll({ donated: false, minMacedonianConfidence: 0.6 }, page, 50));
+      if (result.status === 'stale') return;
+      if (result.status === 'error') {
+        showSnackbar(extractErrorMessage(result.error, 'Failed to load posts.'), 'error');
+      } else {
+        setCandidates(result.value.data.content);
+        setTotalPages(result.value.data.totalPages);
       }
+      setAnsweredPage(page);
     };
     void fetch();
-    return () => { active = false; };
-  }, [open, page, showSnackbar]);
+    return cancel;
+  }, [page, run, cancel, showSnackbar]);
 
   const toggle = (id: number) => {
     setSelected((current) =>
@@ -51,12 +50,11 @@ const SubmitDonationDialog = ({ open, onClose, onCreate, busy }: SubmitDonationD
   };
 
   const create = async () => {
-    if (busy) return;
     if (await onCreate({ postIds: selected })) onClose();
   };
 
   return (
-    <Dialog open={open} onClose={busy ? undefined : onClose} fullWidth maxWidth='md'>
+    <Dialog open onClose={busy ? undefined : onClose} fullWidth maxWidth='md'>
       <DialogTitle>New Donation Batch</DialogTitle>
       <DialogContent>
         {loading && <CircularProgress sx={{ display: 'block', mx: 'auto', my: 2 }}/>}

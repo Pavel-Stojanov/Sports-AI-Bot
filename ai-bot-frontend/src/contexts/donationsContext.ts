@@ -8,7 +8,6 @@ export interface DonationsContextType {
   onCreate: (data: CreateDonationBatchRequest) => Promise<boolean>;
   onApprove: (id: number) => Promise<boolean>;
   onSubmit: (id: number) => Promise<boolean>;
-  refresh: () => Promise<void>;
 }
 
 const DonationsContext = createContext<DonationsContextType | null>(null);

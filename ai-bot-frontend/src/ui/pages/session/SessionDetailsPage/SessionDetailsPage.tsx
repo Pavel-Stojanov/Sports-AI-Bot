@@ -41,16 +41,16 @@ const SessionDetailsPage = () => {
         <Button disabled={busy || !['CREATED', 'PAUSED'].includes(session.status)} onClick={async () => {
           setBusy(true);
           await onStart(session.id);
-          await refresh();
+          await refresh(true);
           setBusy(false);
         }}>{session.status === 'PAUSED' ? 'Resume' : 'Start'}</Button>
         <Button disabled={busy || session.status !== 'RUNNING'} onClick={async () => {
           setBusy(true);
           await onStop(session.id);
-          await refresh();
+          await refresh(true);
           setBusy(false);
         }}>Stop</Button>
-        <Button onClick={() => void refresh()}>Refresh</Button>
+        <Button onClick={() => void refresh(true)}>Refresh</Button>
       </Stack>
       <Typography variant='body2' color='text.secondary' sx={{ mb: 2 }}>
         Sessions run one at a time. Stop takes effect after the current action or request.

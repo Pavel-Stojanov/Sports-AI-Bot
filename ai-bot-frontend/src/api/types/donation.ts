@@ -21,4 +21,6 @@ export interface DonationBatchResponse {
   rejectedCount: number;
   pendingCount: number;
   nextRetryAt: string | null;
+  attemptCount: number;
+  lastError: string | null;
 }
