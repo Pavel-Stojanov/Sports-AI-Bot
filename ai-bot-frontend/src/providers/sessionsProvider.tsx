@@ -1,41 +1,40 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import * as React from 'react';
+import type { ReactNode } from 'react';
 import sessionApi from '../api/sessionApi.ts';
 import type { CreateSessionRequest, SessionResponse } from '../api/types/session.ts';
-import SessionsContext from '../contexts/sessionsContext.ts';
 import useSnackbar from '../hooks/useSnackbar.ts';
 import extractErrorMessage from '../api/extractErrorMessage.ts';
+import SessionsContext from '../contexts/sessionsContext.ts';
+import useLatestRequest from '../hooks/useLatestRequest.ts';
 
-/**
- * Fully provided as the reference example of the provider pattern used in
- * this template — mirror it when you build the posts and donations features.
- * Errors from the backend are shown as snackbars through extractErrorMessage.
- */
-const SessionsProvider = ({ children }: { children: React.ReactNode }) => {
+const POLL_INTERVAL_MS = 3000;
+
+const SessionsProvider = ({ children }: { children: ReactNode }) => {
   const { showSnackbar } = useSnackbar();
 
-  const [sessions, setSessions] = useState<SessionResponse[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  // Null until the first answer arrives; that is the only time the page shows a spinner.
+  const [sessions, setSessions] = useState<SessionResponse[] | null>(null);
+  const { run, cancel } = useLatestRequest();
 
-  const fetch = useCallback(async () => {
-    setLoading(true);
-
-    try {
-      const response = await sessionApi.findAll();
-      setSessions(response.data);
-    } catch (err) {
-      showSnackbar(extractErrorMessage(err, 'Failed to load sessions.'), 'error');
-    } finally {
-      setLoading(false);
-    }
-  }, [showSnackbar]);
+  const fetch = useCallback((silent = false) =>
+    run(() => sessionApi.findAll(), silent).then((result) => {
+      if (result.status === 'stale') return;
+      if (result.status === 'error') {
+        showSnackbar(extractErrorMessage(result.error, 'Failed to load sessions.'), 'error');
+        setSessions((current) => current ?? []);
+      } else {
+        setSessions(result.value.data);
+      }
+    }), [run, showSnackbar]);
 
   const onCreate = useCallback(async (data: CreateSessionRequest) => {
     try {
       await sessionApi.add(data);
       await fetch();
+      return true;
     } catch (err) {
       showSnackbar(extractErrorMessage(err, 'Failed to create session.'), 'error');
+      return false;
     }
   }, [fetch, showSnackbar]);
 
@@ -59,11 +58,19 @@ const SessionsProvider = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     void fetch();
-  }, [fetch]);
+    return cancel;
+  }, [fetch, cancel]);
+
+  const hasRunningSession = sessions?.some((session) => session.status === 'RUNNING') ?? false;
+  useEffect(() => {
+    if (!hasRunningSession) return;
+    const timer = setInterval(() => void fetch(true), POLL_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [hasRunningSession, fetch]);
 
   const value = useMemo(
-    () => ({ sessions, loading, onCreate, onStart, onStop }),
-    [sessions, loading, onCreate, onStart, onStop]
+    () => ({ sessions: sessions ?? [], loading: sessions === null, onCreate, onStart, onStop }),
+    [sessions, onCreate, onStart, onStop]
   );
 
   return <SessionsContext value={value}>{children}</SessionsContext>;

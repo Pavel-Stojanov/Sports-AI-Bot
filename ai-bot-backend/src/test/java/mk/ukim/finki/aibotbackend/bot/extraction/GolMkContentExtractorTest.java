@@ -7,9 +7,11 @@ import mk.ukim.finki.aibotbackend.bot.llm.BotDecision;
 import mk.ukim.finki.aibotbackend.bot.llm.LlmClient;
 import mk.ukim.finki.aibotbackend.model.dto.CreateExtractedPostDto;
 import mk.ukim.finki.aibotbackend.model.enums.MediaType;
+import mk.ukim.finki.aibotbackend.model.exception.BotExecutionException;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 public class GolMkContentExtractorTest {
     private static final String CANNED_JSON = """
@@ -67,7 +69,7 @@ public class GolMkContentExtractorTest {
     }
 
     @Test
-    void unparseableLlmOutputYieldsNoPosts() {
+    void unparseableLlmOutputReportsFailure() {
         LlmClient garbageLlm = new LlmClient() {
             @Override
             public String complete(String systemPrompt, String userPrompt) {
@@ -79,8 +81,9 @@ public class GolMkContentExtractorTest {
                 throw new UnsupportedOperationException();
             }
         };
-        assertThat(new GolMkContentExtractor(garbageLlm)
-            .extract(new PageSnapshot("u", "t", "text", null))).isEmpty();
+        assertThatThrownBy(() -> new GolMkContentExtractor(garbageLlm)
+            .extract(new PageSnapshot("u", "t", "text", null)))
+            .isInstanceOf(BotExecutionException.class);
     }
 
     @Test
@@ -90,7 +93,7 @@ public class GolMkContentExtractorTest {
     }
 
     @Test
-    void llmTransportErrorYieldsNoPosts() {
+    void llmTransportErrorReportsFailure() {
         LlmClient failingLlm = new LlmClient() {
             @Override
             public String complete(String systemPrompt, String userPrompt) {
@@ -102,7 +105,8 @@ public class GolMkContentExtractorTest {
                 throw new UnsupportedOperationException();
             }
         };
-        assertThat(new GolMkContentExtractor(failingLlm)
-            .extract(new PageSnapshot("u", "t", "text", null))).isEmpty();
+        assertThatThrownBy(() -> new GolMkContentExtractor(failingLlm)
+            .extract(new PageSnapshot("u", "t", "text", null)))
+            .isInstanceOf(BotExecutionException.class);
     }
 }

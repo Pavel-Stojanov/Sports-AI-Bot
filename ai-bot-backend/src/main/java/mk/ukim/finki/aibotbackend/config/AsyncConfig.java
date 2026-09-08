@@ -10,6 +10,17 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 @Configuration
 @EnableAsync
 public class AsyncConfig implements AsyncConfigurer {
+    @Bean("botExecutor")
+    public Executor botExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(1);
+        executor.setMaxPoolSize(1);
+        executor.setQueueCapacity(100);
+        executor.setThreadNamePrefix("bot-");
+        executor.initialize();
+        return executor;
+    }
+
     @Bean("taskExecutor")
     @Override
     public Executor getAsyncExecutor() {

@@ -3,6 +3,7 @@ import type { BotActionLogResponse, SessionResponse } from '../api/types/session
 import sessionApi from '../api/sessionApi.ts';
 import useSnackbar from './useSnackbar.ts';
 import extractErrorMessage from '../api/extractErrorMessage.ts';
+import useLatestRequest from './useLatestRequest.ts';
 
 const POLL_INTERVAL_MS = 3000;
 
@@ -11,29 +12,28 @@ const useSessionDetails = (id: string) => {
 
   const [session, setSession] = useState<SessionResponse | null>(null);
   const [logs, setLogs] = useState<BotActionLogResponse[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  // The id that last answered. The spinner shows only until the current id has answered once.
+  const [answeredId, setAnsweredId] = useState<string | null>(null);
+  const { run, cancel } = useLatestRequest();
 
-  const fetch = useCallback(async (silent: boolean = false) => {
-    if (!silent) setLoading(true);
-    try {
-      const [sessionResponse, logsResponse] = await Promise.all([
-        sessionApi.findById(id),
-        sessionApi.findLogs(id)
-      ]);
-      setSession(sessionResponse.data);
-      setLogs(logsResponse.data);
-    } catch (err) {
-      if (!silent) {
-        showSnackbar(extractErrorMessage(err, 'Failed to load session.'), 'error');
+  /** A silent refresh never shows the error snackbar; polls and button clicks use it. */
+  const fetch = useCallback((silent: boolean = false) =>
+    run(() => Promise.all([sessionApi.findById(id), sessionApi.findLogs(id)]), silent).then((result) => {
+      if (result.status === 'stale') return;
+      if (result.status === 'error') {
+        if (!silent) showSnackbar(extractErrorMessage(result.error, 'Failed to load session.'), 'error');
+      } else {
+        const [sessionResponse, logsResponse] = result.value;
+        setSession(sessionResponse.data);
+        setLogs(logsResponse.data);
       }
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }, [id, showSnackbar]);
+      setAnsweredId(id);
+    }), [id, run, showSnackbar]);
 
   useEffect(() => {
     void fetch();
-  }, [fetch]);
+    return cancel;
+  }, [fetch, cancel]);
 
   useEffect(() => {
     if (session?.status !== 'RUNNING') return;
@@ -41,7 +41,7 @@ const useSessionDetails = (id: string) => {
     return () => clearInterval(timer);
   }, [session?.status, fetch]);
 
-  return { session, logs, loading };
+  return { session, logs, loading: answeredId !== id, refresh: fetch };
 };
 
 export default useSessionDetails;

@@ -38,6 +38,9 @@ public class ExtractionSession extends BaseAuditableEntity {
 
     private LocalDateTime startedAt;
 
+    @Column(nullable = false)
+    private long executionNumber;
+
     private LocalDateTime finishedAt;
 
     @OneToMany(mappedBy = "session", cascade = CascadeType.ALL, orphanRemoval = true)

@@ -18,9 +18,10 @@ const TARGET_TYPES: TargetType[] = ['FEED_URL', 'KEYWORD', 'HASHTAG', 'PROFILE']
 const StartSessionDialog = ({ open, onClose }: StartSessionDialogProps) => {
   const { onCreate } = useSessions();
 
+  const [submitting, setSubmitting] = useState(false);
   const [description, setDescription] = useState<string>('');
   const [targets, setTargets] = useState<CreateTargetRequest[]>([
-    { type: 'FEED_URL', value: 'https://www.gol.mk/rezultati' }
+    { type: 'FEED_URL', value: 'https://www.gol.mk/fudbal' }
   ]);
 
   const updateTarget = (index: number, patch: Partial<CreateTargetRequest>) => {
@@ -28,18 +29,22 @@ const StartSessionDialog = ({ open, onClose }: StartSessionDialogProps) => {
   };
 
   const submit = async () => {
-    await onCreate({
+    if (submitting) return;
+    setSubmitting(true);
+    const created = await onCreate({
       socialNetwork: 'SPORTS_PORTAL_GOL',
       description,
       targets: targets.filter((t) => t.value.trim() !== '')
     });
+    setSubmitting(false);
+    if (!created) return;
     setDescription('');
-    setTargets([{ type: 'FEED_URL', value: 'https://www.gol.mk/rezultati' }]);
+    setTargets([{ type: 'FEED_URL', value: 'https://www.gol.mk/fudbal' }]);
     onClose();
   };
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth='sm'>
+    <Dialog open={open} onClose={submitting ? undefined : onClose} fullWidth maxWidth='sm'>
       <DialogTitle>New Extraction Session — gol.mk</DialogTitle>
       <DialogContent>
         <TextField
@@ -86,11 +91,11 @@ const StartSessionDialog = ({ open, onClose }: StartSessionDialogProps) => {
         </Button>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={onClose} disabled={submitting}>Cancel</Button>
         <Button
           variant='contained'
           onClick={() => void submit()}
-          disabled={targets.every((t) => t.value.trim() === '')}
+          disabled={submitting || targets.every((t) => t.value.trim() === '')}
         >
           Create
         </Button>

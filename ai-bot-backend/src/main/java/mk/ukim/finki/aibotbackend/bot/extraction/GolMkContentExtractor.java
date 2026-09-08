@@ -14,6 +14,7 @@ import mk.ukim.finki.aibotbackend.bot.llm.LlmClient;
 import mk.ukim.finki.aibotbackend.model.dto.CreateExtractedPostDto;
 import mk.ukim.finki.aibotbackend.model.dto.CreateMediaItemDto;
 import mk.ukim.finki.aibotbackend.model.enums.MediaType;
+import mk.ukim.finki.aibotbackend.model.exception.BotExecutionException;
 import org.springframework.stereotype.Component;
 
 /**
@@ -66,12 +67,9 @@ public class GolMkContentExtractor implements ContentExtractor {
                 "Page URL: %s%nPage title: %s%n%n%s"
                     .formatted(snapshot.url(), snapshot.title(), snapshot.domContent()));
             return parseItems(raw, snapshot.url());
-        } catch (JsonProcessingException | IllegalArgumentException exception) {
-            log.warn("Could not parse extraction result for {}: {}", snapshot.url(), exception.getMessage());
-            return List.of();
-        } catch (RuntimeException exception) {
-            log.warn("LLM client error while extracting from {}: {}", snapshot.url(), exception.getMessage());
-            return List.of();
+        } catch (JsonProcessingException | RuntimeException exception) {
+            throw new BotExecutionException(
+                "Could not extract articles from " + snapshot.url(), exception);
         }
     }
 

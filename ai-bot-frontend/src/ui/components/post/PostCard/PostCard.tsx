@@ -35,11 +35,13 @@ const PostCard = ({ post, onDelete }: PostCardProps) => {
           <Chip
             size='small'
             color={confidenceColor(post.macedonianConfidence)}
-            label={`MK ${post.macedonianConfidence !== null ? (post.macedonianConfidence * 100).toFixed(0) : '?'}%`}
+            label={`MK score: ${post.macedonianConfidence !== null ? post.macedonianConfidence.toFixed(2) : '?'}`}
           />
           {post.donationBatchId !== null && (
-            <Chip size='small' color='info' label={`Donated · batch #${post.donationBatchId}`}/>
+            <Chip size='small' color='info' label={`Assigned to batch #${post.donationBatchId}`}/>
           )}
+          {post.donationStatus && <Chip size='small'
+            color={post.donationStatus === 'ACCEPTED' ? 'success' : 'error'} label={post.donationStatus}/>}
         </Stack>
         {post.sourceUrl && (
           <Link href={post.sourceUrl} target='_blank' rel='noopener' variant='caption'>
@@ -50,7 +52,7 @@ const PostCard = ({ post, onDelete }: PostCardProps) => {
       <CardActions sx={{ justifyContent: 'space-between' }}>
         <Button startIcon={<InfoIcon/>} onClick={() => navigate(`/posts/${post.id}`)}>Info</Button>
         {onDelete && (
-          <Button startIcon={<DeleteIcon/>} color='error' onClick={() => onDelete(post.id)}>Delete</Button>
+          <Button disabled={post.donationBatchId !== null} startIcon={<DeleteIcon/>} color='error' onClick={() => onDelete(post.id)}>Delete</Button>
         )}
       </CardActions>
     </Card>

@@ -22,10 +22,10 @@ public class SessionStartedListener {
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    @Async
+    @Async("botExecutor")
     public void onSessionStarted(SessionStartedEvent event) {
         log.info("[ASYNC - thread: {}] Running bot for extraction session {}.",
             Thread.currentThread().getName(), event.sessionId());
-        botOrchestrator.runSession(event.sessionId());
+        botOrchestrator.runSession(event.sessionId(), event.executionNumber());
     }
 }

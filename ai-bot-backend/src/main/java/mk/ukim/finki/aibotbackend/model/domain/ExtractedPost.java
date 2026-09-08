@@ -3,6 +3,8 @@ package mk.ukim.finki.aibotbackend.model.domain;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
@@ -14,6 +16,7 @@ import java.util.List;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import mk.ukim.finki.aibotbackend.model.enums.DonationStatus;
 
 /**
  * A piece of content the bot extracted from the social network.
@@ -41,8 +44,7 @@ public class ExtractedPost extends BaseAuditableEntity {
     private String content;
 
     /**
-     * LLM-generated Macedonian summary of the content — what actually gets
-     * donated to doniraj.vezilka.ai (sports variant of the assignment).
+     * Generated summary for display. Donations use the extracted content.
      */
     @Column(columnDefinition = "text")
     private String summary;
@@ -76,6 +78,9 @@ public class ExtractedPost extends BaseAuditableEntity {
      * {@code text_too_short}. Null when the post was accepted.
      */
     private String rejectionReason;
+
+    @Enumerated(EnumType.STRING)
+    private DonationStatus donationStatus;
 
     @Version
     @Column(nullable = false)

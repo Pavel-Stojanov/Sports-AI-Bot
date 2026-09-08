@@ -1,16 +1,13 @@
 package mk.ukim.finki.aibotbackend.jobs;
 
-import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import mk.ukim.finki.aibotbackend.service.domain.DonationService;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 /**
- * Periodically asks doniraj.vezilka.ai what happened to the SUBMITTED
- * donation batches. The heavy lifting is in
- * {@code DonationService.refreshSubmittedStatuses()}, which reads each donated
- * post back and settles the batch.
+ * Retries pending items after their API retry delay. Existing verdicts are final.
+ * Runs without a transaction so that every batch commits on its own.
  */
 @Component
 @Slf4j
@@ -21,8 +18,7 @@ public class DonationStatusScheduler {
         this.donationService = donationService;
     }
 
-    @Scheduled(cron = "0 0 * * * *")
-    @Transactional
+    @Scheduled(fixedDelayString = "${vezilka.retry-check-interval-ms:60000}")
     public void refreshSubmittedDonationStatuses() {
         log.info("Refreshing statuses of submitted donation batches...");
         donationService.refreshSubmittedStatuses();

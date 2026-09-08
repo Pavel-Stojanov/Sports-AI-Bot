@@ -14,6 +14,7 @@ import mk.ukim.finki.aibotbackend.model.exception.BotExecutionException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -29,6 +30,9 @@ import org.springframework.web.client.RestClientResponseException;
 public class OpenAiCompatibleLlmClient implements LlmClient {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final int MAX_RATE_LIMIT_RETRIES = 3;
+    /** Timeouts, connection resets and 5xx answers from the provider are retried this often. */
+    private static final int MAX_TRANSPORT_RETRIES = 2;
+    private static final long TRANSPORT_RETRY_DELAY_MILLIS = 2_000;
     private static final long DEFAULT_RETRY_DELAY_MILLIS = 30_000L;
     private static final long MAX_RETRY_DELAY_MILLIS = 60_000L;
     private static final long RETRY_DELAY_MARGIN_MILLIS = 1_000L;
@@ -75,9 +79,10 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
     private final RestClient restClient;
     private final LlmProperties llmProperties;
 
-    public OpenAiCompatibleLlmClient(LlmProperties llmProperties) {
+    public OpenAiCompatibleLlmClient(LlmProperties llmProperties, ClientHttpRequestFactory requestFactory) {
         this.llmProperties = llmProperties;
         this.restClient = RestClient.builder()
+            .requestFactory(requestFactory)
             .baseUrl(llmProperties.baseUrl())
             .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + llmProperties.apiKey())
             .build();
@@ -96,35 +101,57 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
         int retries = 0;
         while (true) {
             try {
-                JsonNode response = restClient.post()
-                    .uri("/chat/completions")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(body)
-                    .retrieve()
-                    .body(JsonNode.class);
-                return response.path("choices").path(0).path("message").path("content").asText();
+                return post(body).path("choices").path(0).path("message").path("content").asText();
             } catch (RestClientResponseException exception) {
-                if (exception.getStatusCode().value() != HttpStatus.TOO_MANY_REQUESTS.value()
-                    || retries >= MAX_RATE_LIMIT_RETRIES) {
+                boolean rateLimited = exception.getStatusCode().value() == HttpStatus.TOO_MANY_REQUESTS.value();
+                int limit = rateLimited ? MAX_RATE_LIMIT_RETRIES : MAX_TRANSPORT_RETRIES;
+                if ((!rateLimited && !exception.getStatusCode().is5xxServerError()) || retries >= limit) {
                     throw new BotExecutionException("LLM call failed: " + exception.getMessage(), exception);
                 }
                 retries++;
-                long delayMillis = retryDelayMillis(
-                    exception.getResponseHeaders() != null
-                        ? exception.getResponseHeaders().getFirst(HttpHeaders.RETRY_AFTER) : null,
-                    exception.getResponseBodyAsString());
-                log.warn("LLM rate limited (429); waiting {}ms before retry {}/{}",
-                    delayMillis, retries, MAX_RATE_LIMIT_RETRIES);
-                try {
-                    Thread.sleep(delayMillis);
-                } catch (InterruptedException interruptedException) {
-                    Thread.currentThread().interrupt();
-                    throw new BotExecutionException(
-                        "LLM call interrupted while waiting to retry after rate limit", interruptedException);
-                }
+                long delayMillis = rateLimited
+                    ? retryDelayMillis(
+                        exception.getResponseHeaders() != null
+                            ? exception.getResponseHeaders().getFirst(HttpHeaders.RETRY_AFTER) : null,
+                        exception.getResponseBodyAsString())
+                    : TRANSPORT_RETRY_DELAY_MILLIS * retries;
+                log.warn("LLM call answered HTTP {}; waiting {}ms before retry {}/{}",
+                    exception.getStatusCode().value(), delayMillis, retries, limit);
+                pause(delayMillis);
             } catch (RestClientException exception) {
-                throw new BotExecutionException("LLM call failed: " + exception.getMessage(), exception);
+                // No HTTP answer at all: timeout, reset, DNS. Worth one more try.
+                if (retries >= MAX_TRANSPORT_RETRIES) {
+                    throw new BotExecutionException("LLM call failed: " + exception.getMessage(), exception);
+                }
+                retries++;
+                long delayMillis = TRANSPORT_RETRY_DELAY_MILLIS * retries;
+                log.warn("LLM call failed ({}); waiting {}ms before retry {}/{}",
+                    exception.getMessage(), delayMillis, retries, MAX_TRANSPORT_RETRIES);
+                pause(delayMillis);
             }
+        }
+    }
+
+    private JsonNode post(Map<String, Object> body) {
+        JsonNode response = restClient.post()
+            .uri("/chat/completions")
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(body)
+            .retrieve()
+            .body(JsonNode.class);
+        if (response == null) {
+            // A 2xx without a body is a broken answer, not a verdict. Retry it like a timeout.
+            throw new RestClientException("LLM answered with an empty body");
+        }
+        return response;
+    }
+
+    private static void pause(long delayMillis) {
+        try {
+            Thread.sleep(delayMillis);
+        } catch (InterruptedException interruptedException) {
+            Thread.currentThread().interrupt();
+            throw new BotExecutionException("LLM call interrupted while waiting to retry", interruptedException);
         }
     }
 
@@ -176,12 +203,12 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
             try {
                 return guardFirstDecision(parseDecision(retryRaw), history);
             } catch (JsonProcessingException | IllegalArgumentException secondError) {
-                log.error("LLM decision unparseable twice, finishing target: {}", secondError.getMessage());
+                // The loop calls this outside its per-action guard, so throwing here would
+                // drop every article this target has collected. Close the target instead.
+                log.warn("LLM returned an invalid decision twice; finishing this target: {}", secondError.getMessage());
                 return new BotDecision(
-                    new BotAction(BotActionType.FINISH, null, null,
-                        "LLM output was not parseable twice in a row"),
-                    true,
-                    "Safe FINISH fallback after two malformed LLM responses.");
+                    new BotAction(BotActionType.FINISH, null, null, "invalid decision twice"),
+                    false, "The LLM returned an invalid decision twice, so this target ends here.");
             }
         }
     }
@@ -203,9 +230,21 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
 
     static BotDecision parseDecision(String raw) throws JsonProcessingException {
         JsonNode root = MAPPER.readTree(stripFences(raw));
+        if (root == null || !root.isObject() || !root.path("action").isObject()
+            || !root.path("action").path("type").isTextual() || !root.path("goalReached").isBoolean()) {
+            throw new IllegalArgumentException("Decision requires action.type and a boolean goalReached.");
+        }
         JsonNode action = root.path("action");
+        BotActionType type = BotActionType.valueOf(action.path("type").asText());
+        if ((type == BotActionType.NAVIGATE || type == BotActionType.CLICK || type == BotActionType.TYPE)
+            && (!action.path("target").isTextual() || action.path("target").asText().isBlank())) {
+            throw new IllegalArgumentException(type + " requires a target.");
+        }
+        if (type == BotActionType.TYPE && !action.path("value").isTextual()) {
+            throw new IllegalArgumentException("TYPE requires a text value.");
+        }
         BotAction botAction = new BotAction(
-            BotActionType.valueOf(action.path("type").asText("FINISH")),
+            type,
             action.hasNonNull("target") ? action.get("target").asText() : null,
             action.hasNonNull("value") ? action.get("value").asText() : null,
             action.path("reasoning").asText("")

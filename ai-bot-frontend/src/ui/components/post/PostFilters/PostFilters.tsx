@@ -39,7 +39,7 @@ const PostFilters = ({ filter, onChange }: PostFiltersProps) => {
         onKeyDown={(e) => e.key === 'Enter' && apply()}
       />
       <Box sx={{ width: 200 }}>
-        <Typography variant='caption'>Min. Macedonian confidence: {minConfidence.toFixed(2)}</Typography>
+        <Typography variant='caption'>Min. Macedonian score: {minConfidence.toFixed(2)}</Typography>
         <Slider
           size='small'
           min={0}
@@ -50,11 +50,11 @@ const PostFilters = ({ filter, onChange }: PostFiltersProps) => {
         />
       </Box>
       <FormControl size='small' sx={{ minWidth: 120 }}>
-        <InputLabel>Donated</InputLabel>
-        <Select label='Donated' value={donated} onChange={(e) => setDonated(e.target.value)}>
+        <InputLabel>Batch assignment</InputLabel>
+        <Select label='Batch assignment' value={donated} onChange={(e) => setDonated(e.target.value)}>
           <MenuItem value='ALL'>All</MenuItem>
-          <MenuItem value='YES'>Donated</MenuItem>
-          <MenuItem value='NO'>Not donated</MenuItem>
+          <MenuItem value='YES'>Assigned</MenuItem>
+          <MenuItem value='NO'>Unassigned</MenuItem>
         </Select>
       </FormControl>
       <Button variant='contained' onClick={apply}>Apply</Button>

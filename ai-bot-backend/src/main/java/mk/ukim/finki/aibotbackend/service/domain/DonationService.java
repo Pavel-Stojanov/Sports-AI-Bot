@@ -35,13 +35,20 @@ public interface DonationService {
      * requests can be cut short — by the hourly rate limit, for instance — and
      * is left SUBMITTED with the verdicts received so far, for
      * {@link #refreshSubmittedStatuses()} to settle.</p>
+     *
+     * <p>No database lock is held while Vezilka answers: the batch is leased in
+     * one short transaction, each chunk's verdicts commit on their own, and the
+     * batch settles in a final one. A failure the API called permanent, or the
+     * fifth failed attempt, moves the batch to FAILED with the reason stored;
+     * a person may submit a FAILED batch again.</p>
      */
     DonationBatch submit(Long id);
 
     /**
-     * Settles every batch still left in SUBMITTED by reading its donated posts
-     * back from Vezilka and confirming their recorded verdicts. Called
-     * periodically by the {@code DonationStatusScheduler}.
+     * Resends the unsent posts of every SUBMITTED batch whose retry time has
+     * passed. Batches are leased and committed one at a time, so a failure in
+     * one batch cannot undo verdicts stored for another. Called periodically
+     * by the {@code DonationStatusScheduler}.
      */
     void refreshSubmittedStatuses();
 }

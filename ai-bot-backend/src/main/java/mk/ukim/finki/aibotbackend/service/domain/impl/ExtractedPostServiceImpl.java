@@ -2,8 +2,10 @@ package mk.ukim.finki.aibotbackend.service.domain.impl;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import mk.ukim.finki.aibotbackend.model.domain.ExtractedPost;
 import mk.ukim.finki.aibotbackend.model.dto.PostFilterDto;
+import mk.ukim.finki.aibotbackend.model.exception.InvalidDonationStateException;
 import mk.ukim.finki.aibotbackend.repository.ExtractedPostRepository;
 import mk.ukim.finki.aibotbackend.service.domain.ExtractedPostService;
 import org.springframework.data.domain.Page;
@@ -49,6 +51,11 @@ public class ExtractedPostServiceImpl implements ExtractedPostService {
     }
 
     @Override
+    public Set<String> findExternalIdsBySessionId(Long sessionId) {
+        return extractedPostRepository.findExternalIdsBySessionId(sessionId);
+    }
+
+    @Override
     public Optional<ExtractedPost> findById(Long id) {
         return extractedPostRepository.findById(id);
     }
@@ -66,7 +73,13 @@ public class ExtractedPostServiceImpl implements ExtractedPostService {
     @Override
     public Optional<ExtractedPost> deleteById(Long id) {
         Optional<ExtractedPost> post = extractedPostRepository.findById(id);
-        post.ifPresent(extractedPostRepository::delete);
+        post.ifPresent(item -> {
+            if (item.getDonationBatch() != null) {
+                throw new InvalidDonationStateException(
+                    "Posts assigned to a donation batch cannot be deleted.");
+            }
+            extractedPostRepository.delete(item);
+        });
         return post;
     }
 }

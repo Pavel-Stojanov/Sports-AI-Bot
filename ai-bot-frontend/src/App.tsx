@@ -5,6 +5,8 @@ import HomePage from './ui/pages/home/HomePage/HomePage.tsx';
 import RegisterPage from './ui/pages/auth/RegisterPage/RegisterPage.tsx';
 import LoginPage from './ui/pages/auth/LoginPage/LoginPage.tsx';
 import ProtectedRoute from './ui/components/routing/ProtectedRoute/ProtectedRoute.tsx';
+import PostsProvider from './providers/postsProvider.tsx';
+import DonationsProvider from './providers/donationsProvider.tsx';
 import SessionsProvider from './providers/sessionsProvider.tsx';
 import SessionsPage from './ui/pages/session/SessionsPage/SessionsPage.tsx';
 import SessionDetailsPage from './ui/pages/session/SessionDetailsPage/SessionDetailsPage.tsx';
@@ -25,9 +27,9 @@ function App() {
               <Route path='sessions' element={<SessionsPage/>}/>
               <Route path='sessions/:id' element={<SessionDetailsPage/>}/>
             </Route>
-            <Route path='posts' element={<PostsPage/>}/>
+            <Route path='posts' element={<PostsProvider><PostsPage/></PostsProvider>}/>
             <Route path='posts/:id' element={<PostDetailsPage/>}/>
-            <Route path='donations' element={<DonationsPage/>}/>
+            <Route path='donations' element={<DonationsProvider><DonationsPage/></DonationsProvider>}/>
           </Route>
         </Route>
       </Routes>

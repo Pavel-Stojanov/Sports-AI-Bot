@@ -1,11 +1,54 @@
 package mk.ukim.finki.aibotbackend.bot.extraction;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 public class HeuristicLanguageDetectorTest {
     private final HeuristicLanguageDetector detector = new HeuristicLanguageDetector();
+
+    @Test
+    void macedonianWithoutDistinctiveLettersStillHasLanguageEvidence() {
+        assertThat(detector.macedonianConfidence(
+            "Вардар победи со два гола во натпреварот и се пласира на првото место."))
+            .isGreaterThanOrEqualTo(0.8);
+    }
+
+    @Test
+    void latinScriptTablesInsideAMacedonianReportKeepItDonatable() {
+        // Roughly 55 percent Cyrillic letters: a match report followed by a results table.
+        double score = detector.macedonianConfidence(
+            "Вардар победи со два гола во натпреварот и се пласира на првото место. "
+                + "Vardar 2:0 Shkendija, Rabotnicki 1:1 Sileks, Struga 0:3 Shkupi, Bregalnica 1:0 Tikves.");
+        assertThat(score).isGreaterThanOrEqualTo(0.6);
+    }
+
+    @Test
+    void oneForeignNameDoesNotSinkAMacedonianArticle() {
+        double score = detector.macedonianConfidence(
+            "Фёдор Смолов постигна два гола, а Вардар победи со два гола во натпреварот и се пласира на првото место.");
+        assertThat(score).isGreaterThanOrEqualTo(0.6);
+    }
+
+    @Test
+    void aFewMacedonianWordsOnALatinPageAreNotEnough() {
+        assertThat(detector.macedonianConfidence(
+            "Manchester United won the match 3-1 and Liverpool drew 2-2 with Arsenal. Ќе игра во финалето на."))
+            .isLessThan(0.6);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "Российская команда выиграла матч и вышла в финал чемпионата.",
+        "Отборът спечели мача и ще играе във финала на първенството.",
+        "Тим је победио у финалу и освојио титулу.",
+        "Спорт футбол тенис баскетбол"
+    })
+    void cyrillicAloneIsNotEnoughForDonation(String text) {
+        assertThat(detector.macedonianConfidence(text)).isLessThan(0.6);
+    }
 
     @Test
     void macedonianTextScoresHigh() {

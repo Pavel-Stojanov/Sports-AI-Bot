@@ -1,25 +1,15 @@
 import { Box, CircularProgress, Pagination, Typography } from '@mui/material';
-import { useState } from 'react';
-import type { PostFilter } from '../../../../api/types/post.ts';
 import usePosts from '../../../../hooks/usePosts.ts';
 import PostFilters from '../../../components/post/PostFilters/PostFilters.tsx';
 import PostGrid from '../../../components/post/PostGrid/PostGrid.tsx';
 
 const PostsPage = () => {
-  const [filter, setFilter] = useState<PostFilter>({});
-  const [page, setPage] = useState<number>(0);
-
-  const { posts, loading, onDelete } = usePosts(filter, page, 12);
-
-  const handleFilterChange = (next: PostFilter) => {
-    setPage(0);
-    setFilter(next);
-  };
+  const { posts, loading, onDelete, filter, page, setPage, onFilterChange } = usePosts();
 
   return (
     <Box>
       <Typography variant='h5' sx={{ mb: 2 }}>Extracted Posts</Typography>
-      <PostFilters filter={filter} onChange={handleFilterChange}/>
+      <PostFilters filter={filter} onChange={onFilterChange}/>
       {loading && (
         <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
           <CircularProgress/>
@@ -27,7 +17,7 @@ const PostsPage = () => {
       )}
       {!loading && (!posts || posts.content.length === 0) && (
         <Typography color='text.secondary'>
-          No extracted posts yet. Run an extraction session first.
+          No posts match these filters. Clear the filters or run an extraction session.
         </Typography>
       )}
       {!loading && posts && (
