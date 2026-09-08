@@ -71,11 +71,10 @@ public class BotOrchestratorImpl implements BotOrchestrator {
                 List<CreateExtractedPostDto> extracted = socialNetworkBot.execute(
                     target,
                     (action, successful) -> {
+                        // A failed step stays in the trace and the loop goes on. Leaving the
+                        // loop here would drop the articles this target has already collected.
                         botActionLogService.log(session, action, successful);
                         requireRunning(sessionId, executionNumber);
-                        if (!successful && action.type() == BotActionType.EXTRACT) {
-                            throw new BotExecutionException("Article extraction failed. See the backend log for details.");
-                        }
                     });
                 requireRunning(sessionId, executionNumber);
                 postCount += extracted.size();

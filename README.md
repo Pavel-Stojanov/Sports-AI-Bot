@@ -201,7 +201,8 @@ legacy verdicts.
 
 The LLM can choose an unhelpful link or extract incomplete text. Snapshots can
 truncate long pages, and generated summaries can be wrong. Review the article
-and its source before donating. Empty sessions and unrecoverable extraction or
+and its source before donating. A failed extraction step stays in the trace and
+the run continues with the articles collected so far. Empty sessions and
 decision errors are reported as FAILED.
 
 The language heuristic can misclassify short or mixed-language text. Existing

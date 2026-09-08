@@ -183,6 +183,26 @@ public class BotOrchestratorImplTest {
     }
 
     @Test
+    void failedExtractionKeepsEarlierArticlesOfTheTarget() {
+        Long sessionId = createRunningSessionWithTarget();
+        when(socialNetworkBot.execute(any(), any())).thenAnswer(invocation -> {
+            BotStepListener listener = invocation.getArgument(1);
+            listener.onStep(new BotAction(BotActionType.EXTRACT, null, null, "first article"), true);
+            listener.onStep(new BotAction(BotActionType.EXTRACT, null, null, "unparseable page"), false);
+            return List.of(new CreateExtractedPostDto(
+                "gol-kept", "gol.mk", "Вардар победи со 3:1.", null,
+                "https://www.gol.mk/fudbal/kept", null, 0.95, List.of()));
+        });
+
+        botOrchestrator.runSession(sessionId, extractionSessionService.findById(sessionId).orElseThrow().getExecutionNumber());
+
+        assertThat(extractionSessionService.findById(sessionId).orElseThrow().getStatus())
+            .isEqualTo(SessionStatus.COMPLETED);
+        assertThat(extractedPostService.findAll(new PostFilterDto(sessionId, null, null, null, null), 0, 10)
+            .getTotalElements()).isEqualTo(1);
+    }
+
+    @Test
     void runSessionCompletesAndPersistsExtractedPost() {
         Long sessionId = createRunningSessionWithTarget();
         when(socialNetworkBot.execute(any(), any())).thenReturn(List.of(
